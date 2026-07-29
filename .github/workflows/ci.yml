@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Type check
+        run: npm run lint
+      - name: Frontend tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          components: clippy,rustfmt
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+      - name: Test Rust workspace
+        run: cargo test --workspace
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Compile desktop application
+        run: cargo build --release -p asv-desktop
+
+  firmware:
+    name: Arduino Uno firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install Arduino AVR core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+      - name: Compile GPIO example
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/examples/GpioDemo
+      - name: Compile native protocol test
+        run: >-
+          g++ -std=c++11 -Wall -Wextra -Werror
+          firmware/tests/native/test_protocol.cpp
+          firmware/ArduinoSignalVisualizer/src/AsvProtocol.cpp
+          -o /tmp/asv-protocol-test
+      - name: Validate shared protocol vector
+        run: >-
+          /tmp/asv-protocol-test
+          protocol/test-vectors/digital-write-d13-high.hex
+

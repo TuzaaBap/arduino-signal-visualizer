@@ -1,0 +1,27 @@
+# JavaScript
+node_modules/
+desktop/dist/
+*.tsbuildinfo
+
+# Rust
+target/
+desktop/src-tauri/gen/
+
+# Tauri bundles
+desktop/src-tauri/target/
+
+# Arduino
+firmware/build/
+firmware/.arduino/
+.pio/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
+
+# Local runtime output
+work/
+outputs/
+*.log

@@ -1,0 +1,28 @@
+[package]
+name = "asv-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "asv_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+hardware-validation = []
+
+[[bin]]
+name = "arduino-signal-visualizer"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.5.3", features = [] }
+
+[dependencies]
+asv-protocol = { path = "../../crates/asv-protocol" }
+serde.workspace = true
+serde_json = "1.0"
+serialport = { version = "4.9.0", default-features = false }
+tauri = { version = "2.11.5", features = [] }
+thiserror.workspace = true
