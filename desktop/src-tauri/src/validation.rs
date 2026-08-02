@@ -7,12 +7,14 @@ use std::{
 };
 
 use asv_protocol::BoardDescriptor;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
     connection::{self, ConnectionManager},
-    model::{ConnectionStatus, DiagnosticCategory, GpioBatch, GpioUpdate, ProtocolDiagnostic},
+    model::{
+        AdcSample, ConnectionStatus, DiagnosticCategory, GpioBatch, GpioUpdate, ProtocolDiagnostic,
+    },
 };
 
 const REPORT_PATH_ENV: &str = "ASV_VALIDATION_REPORT";
@@ -36,9 +38,14 @@ struct ValidationSnapshot {
     board: Option<BoardDescriptor>,
     status_history: Vec<ConnectionStatus>,
     pins: BTreeMap<u8, PinValidation>,
+    analog_channels: BTreeMap<u8, AdcValidation>,
     received_gpio_updates: u64,
+    received_adc_samples: u64,
     ui_acknowledgements: u64,
     ui_matches_backend: bool,
+    ui_adc_acknowledgements: u64,
+    ui_adc_match_observed: bool,
+    maximum_ui_adc_buffer_length: usize,
     diagnostics: Vec<ProtocolDiagnostic>,
     crc_failures: u64,
     dropped_packet_warnings: u64,
@@ -52,6 +59,24 @@ struct PinValidation {
     low_observations: u64,
     backend_latest: Option<GpioUpdate>,
     ui_latest: Option<GpioUpdate>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdcValidation {
+    sample_count: u64,
+    minimum_raw: Option<u16>,
+    maximum_raw: Option<u16>,
+    latest: Option<AdcSample>,
+    ui_latest: Option<AdcSample>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdcUiChannelState {
+    channel: u8,
+    buffer_length: usize,
+    latest: AdcSample,
 }
 
 impl ValidationRecorder {
@@ -73,9 +98,14 @@ impl ValidationRecorder {
                 board: None,
                 status_history: Vec::new(),
                 pins: BTreeMap::new(),
+                analog_channels: BTreeMap::new(),
                 received_gpio_updates: 0,
+                received_adc_samples: 0,
                 ui_acknowledgements: 0,
                 ui_matches_backend: true,
+                ui_adc_acknowledgements: 0,
+                ui_adc_match_observed: false,
+                maximum_ui_adc_buffer_length: 0,
                 diagnostics: Vec::new(),
                 crc_failures: 0,
                 dropped_packet_warnings: 0,
@@ -141,6 +171,29 @@ impl ValidationRecorder {
         self.write_report(true);
     }
 
+    pub fn record_adc_sample(&self, sample: AdcSample) {
+        if !self.enabled() {
+            return;
+        }
+        self.with_state(|state| {
+            state.received_adc_samples += 1;
+            let channel = state.analog_channels.entry(sample.channel).or_default();
+            channel.sample_count += 1;
+            channel.minimum_raw = Some(
+                channel
+                    .minimum_raw
+                    .map_or(sample.raw_value, |value| value.min(sample.raw_value)),
+            );
+            channel.maximum_raw = Some(
+                channel
+                    .maximum_raw
+                    .map_or(sample.raw_value, |value| value.max(sample.raw_value)),
+            );
+            channel.latest = Some(sample);
+        });
+        self.write_report(false);
+    }
+
     pub fn record_ui_state(&self, updates: Vec<GpioUpdate>) {
         if !self.enabled() {
             return;
@@ -150,6 +203,35 @@ impl ValidationRecorder {
             for update in updates {
                 let pin = update.pin;
                 state.pins.entry(pin).or_default().ui_latest = Some(update);
+            }
+        });
+        self.write_report(false);
+    }
+
+    pub fn record_adc_ui_state(&self, channels: Vec<AdcUiChannelState>) {
+        if !self.enabled() {
+            return;
+        }
+        self.with_state(|state| {
+            state.ui_adc_acknowledgements += 1;
+            for channel in channels {
+                state.maximum_ui_adc_buffer_length = state
+                    .maximum_ui_adc_buffer_length
+                    .max(channel.buffer_length);
+                state
+                    .analog_channels
+                    .entry(channel.channel)
+                    .or_default()
+                    .ui_latest = Some(channel.latest);
+            }
+            if state.analog_channels.values().all(|channel| {
+                channel
+                    .latest
+                    .as_ref()
+                    .zip(channel.ui_latest.as_ref())
+                    .is_some_and(|(backend, ui)| backend == ui)
+            }) {
+                state.ui_adc_match_observed = true;
             }
         });
         self.write_report(false);
@@ -232,6 +314,14 @@ pub fn validation_acknowledge_gpio(
     recorder.record_ui_state(updates);
 }
 
+#[tauri::command]
+pub fn validation_acknowledge_adc(
+    channels: Vec<AdcUiChannelState>,
+    recorder: State<'_, ValidationRecorder>,
+) {
+    recorder.record_adc_ui_state(channels);
+}
+
 pub fn record_status(app: &AppHandle, status: ConnectionStatus) {
     app.state::<ValidationRecorder>().record_status(status);
 }
@@ -242,6 +332,10 @@ pub fn record_board(app: &AppHandle, board: BoardDescriptor) {
 
 pub fn record_batch(app: &AppHandle, batch: &GpioBatch) {
     app.state::<ValidationRecorder>().record_batch(batch);
+}
+
+pub fn record_adc_sample(app: &AppHandle, sample: AdcSample) {
+    app.state::<ValidationRecorder>().record_adc_sample(sample);
 }
 
 pub fn record_diagnostic(app: &AppHandle, diagnostic: ProtocolDiagnostic) {

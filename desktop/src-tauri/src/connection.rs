@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     io::{ErrorKind, Read},
     sync::{
         Arc, Mutex,
@@ -18,17 +18,19 @@ use serialport::{SerialPort, SerialPortType};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::model::{
-    ConnectionMode, ConnectionPhase, ConnectionStatus, DiagnosticCategory, GpioBatch, GpioUpdate,
-    ProtocolDiagnostic, SerialPortDescriptor,
+    AdcBatch, AdcSample, ConnectionMode, ConnectionPhase, ConnectionStatus, DiagnosticCategory,
+    GpioBatch, GpioUpdate, ProtocolDiagnostic, SerialPortDescriptor,
 };
 use crate::validation;
 
 const EVENT_CONNECTION_STATUS: &str = "asv://connection-status";
 const EVENT_BOARD_INFO: &str = "asv://board-info";
 const EVENT_GPIO_BATCH: &str = "asv://gpio-batch";
+const EVENT_ADC_BATCH: &str = "asv://adc-batch";
 const EVENT_DIAGNOSTIC: &str = "asv://protocol-diagnostic";
 const UI_QUEUE_CAPACITY: usize = 256;
 const UI_FLUSH_INTERVAL: Duration = Duration::from_millis(33);
+const ADC_UI_PENDING_PER_CHANNEL: usize = 64;
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Default)]
@@ -233,7 +235,13 @@ fn start_serial_workers(
                                     || packet.packet_type == PacketType::BoardHello =>
                             {
                                 handshake_complete = true;
-                                handle_packet(&sender, &reader_dropped, &mut tracker, packet);
+                                handle_packet(
+                                    &sender,
+                                    &reader_dropped,
+                                    &reader_stop,
+                                    &mut tracker,
+                                    packet,
+                                );
                             }
                             Ok(_) => {}
                             Err(error) if handshake_complete => try_send(
@@ -296,10 +304,10 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
             board_type: asv_protocol::BoardType::ArduinoUnoR3,
             firmware_version: asv_protocol::FirmwareVersion {
                 major: 0,
-                minor: 1,
+                minor: 2,
                 patch: 0,
             },
-            capabilities: 1,
+            capabilities: 3,
             reset_cause: asv_protocol::ResetCause::Software,
             nominal_logic_mv: 5_000,
         };
@@ -321,6 +329,14 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
                 &producer_dropped,
                 SourceMessage::Event(mock_gpio_event(tick, sequence)),
             );
+            sequence = sequence.wrapping_add(1);
+            if !send_preserved_event(
+                &sender,
+                &producer_stop,
+                SourceMessage::Event(mock_adc_event(tick, sequence)),
+            ) {
+                break;
+            }
             sequence = sequence.wrapping_add(1);
             tick = tick.wrapping_add(1);
             thread::sleep(Duration::from_millis(125));
@@ -360,9 +376,28 @@ fn mock_gpio_event(tick: u32, sequence: u16) -> ProtocolEvent {
     }
 }
 
+fn mock_adc_event(tick: u32, sequence: u16) -> ProtocolEvent {
+    let position = (tick * 41) % 2_046;
+    let raw_value = if position <= 1_023 {
+        position
+    } else {
+        2_046 - position
+    } as u16;
+    ProtocolEvent::AnalogSample {
+        sequence,
+        board_timestamp_us: tick * 125_000,
+        channel: (tick % 6) as u8,
+        raw_value,
+        resolution_bits: 10,
+        reference_mode: asv_protocol::AdcReferenceMode::Default,
+        reference_mv: 5_000,
+    }
+}
+
 fn handle_packet(
     sender: &SyncSender<SourceMessage>,
     dropped: &AtomicU64,
+    stop: &AtomicBool,
     tracker: &mut SequenceTracker,
     packet: Packet,
 ) {
@@ -397,6 +432,9 @@ fn handle_packet(
     }
 
     match asv_protocol::decode_event(&packet) {
+        Ok(event @ ProtocolEvent::AnalogSample { .. }) => {
+            let _ = send_preserved_event(sender, stop, SourceMessage::Event(event));
+        }
         Ok(event) => try_send(sender, dropped, SourceMessage::Event(event)),
         Err(error) => try_send(
             sender,
@@ -406,6 +444,27 @@ fn handle_packet(
                 message: error.to_string(),
             }),
         ),
+    }
+}
+
+fn send_preserved_event(
+    sender: &SyncSender<SourceMessage>,
+    stop: &AtomicBool,
+    message: SourceMessage,
+) -> bool {
+    let mut pending = message;
+    loop {
+        match sender.try_send(pending) {
+            Ok(()) => return true,
+            Err(TrySendError::Full(message)) => {
+                if stop.load(Ordering::Relaxed) {
+                    return false;
+                }
+                pending = message;
+                thread::sleep(Duration::from_millis(1));
+            }
+            Err(TrySendError::Disconnected(_)) => return false,
+        }
     }
 }
 
@@ -431,6 +490,8 @@ fn deliver_events(
     let mut hello_received = false;
     let mut timeout_reported = false;
     let mut latest_gpio = BTreeMap::<u8, GpioUpdate>::new();
+    let mut pending_adc = BTreeMap::<u8, VecDeque<AdcSample>>::new();
+    let mut coalesced_adc_ui_samples = 0_u64;
     let mut next_flush = Instant::now() + UI_FLUSH_INTERVAL;
 
     while !stop.load(Ordering::Relaxed) {
@@ -473,6 +534,32 @@ fn deliver_events(
                         },
                     );
                 }
+                Ok(SourceMessage::Event(ProtocolEvent::AnalogSample {
+                    sequence,
+                    board_timestamp_us,
+                    channel,
+                    raw_value,
+                    resolution_bits,
+                    reference_mode,
+                    reference_mv,
+                })) => {
+                    let sample = AdcSample {
+                        sequence,
+                        board_timestamp_us,
+                        channel,
+                        raw_value,
+                        resolution_bits,
+                        reference_mode,
+                        reference_mv,
+                    };
+                    validation::record_adc_sample(&app, sample.clone());
+                    let channel_buffer = pending_adc.entry(channel).or_default();
+                    if channel_buffer.len() == ADC_UI_PENDING_PER_CHANNEL {
+                        channel_buffer.pop_front();
+                        coalesced_adc_ui_samples += 1;
+                    }
+                    channel_buffer.push_back(sample);
+                }
                 Ok(SourceMessage::Diagnostic(diagnostic)) => {
                     emit_diagnostic(&app, diagnostic);
                 }
@@ -497,11 +584,13 @@ fn deliver_events(
 
         if Instant::now() >= next_flush {
             flush_gpio(&app, &mut latest_gpio, &dropped);
+            flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
             next_flush = Instant::now() + UI_FLUSH_INTERVAL;
         }
         thread::sleep(Duration::from_millis(4));
     }
     flush_gpio(&app, &mut latest_gpio, &dropped);
+    flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
 }
 
 fn flush_gpio(app: &AppHandle, latest_gpio: &mut BTreeMap<u8, GpioUpdate>, dropped: &AtomicU64) {
@@ -527,6 +616,26 @@ fn flush_gpio(app: &AppHandle, latest_gpio: &mut BTreeMap<u8, GpioUpdate>, dropp
             },
         );
     }
+}
+
+fn flush_adc(
+    app: &AppHandle,
+    pending_adc: &mut BTreeMap<u8, VecDeque<AdcSample>>,
+    coalesced_adc_ui_samples: &mut u64,
+) {
+    if pending_adc.is_empty() && *coalesced_adc_ui_samples == 0 {
+        return;
+    }
+
+    let samples = std::mem::take(pending_adc)
+        .into_values()
+        .flat_map(VecDeque::into_iter)
+        .collect();
+    let batch = AdcBatch {
+        samples,
+        coalesced_ui_samples: std::mem::take(coalesced_adc_ui_samples),
+    };
+    let _ = app.emit(EVENT_ADC_BATCH, batch);
 }
 
 fn emit_status(
@@ -584,6 +693,36 @@ mod tests {
                 panic!("mock source must emit GPIO events");
             };
             assert!((2..=13).contains(&pin));
+        }
+    }
+
+    #[test]
+    fn mock_adc_source_is_deterministic_and_within_declared_resolution() {
+        assert_eq!(
+            mock_adc_event(0, 2),
+            ProtocolEvent::AnalogSample {
+                sequence: 2,
+                board_timestamp_us: 0,
+                channel: 0,
+                raw_value: 0,
+                resolution_bits: 10,
+                reference_mode: asv_protocol::AdcReferenceMode::Default,
+                reference_mv: 5_000,
+            }
+        );
+        for tick in 0..10_000 {
+            let ProtocolEvent::AnalogSample {
+                channel,
+                raw_value,
+                resolution_bits,
+                ..
+            } = mock_adc_event(tick, tick as u16)
+            else {
+                panic!("mock source must emit ADC events");
+            };
+            assert!(channel < 6);
+            assert_eq!(resolution_bits, 10);
+            assert!(raw_value <= 1_023);
         }
     }
 }

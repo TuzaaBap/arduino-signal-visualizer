@@ -9,6 +9,8 @@ namespace asv {
 constexpr uint8_t kProtocolVersion = 1;
 constexpr uint8_t kBoardHelloPacket = 0x01;
 constexpr uint8_t kDigitalGpioPacket = 0x10;
+constexpr uint8_t kAnalogSamplePacket = 0x11;
+constexpr uint8_t kAnalogEventVersion = 1;
 constexpr size_t kHeaderLength = 10;
 constexpr size_t kCrcLength = 2;
 constexpr size_t kMaximumPayloadLength = 32;
@@ -29,4 +31,3 @@ size_t encodePacket(uint8_t packetType, uint16_t sequence,
 }  // namespace asv
 
 #endif
-

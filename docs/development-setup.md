@@ -86,19 +86,23 @@ environments, is:
 
 ```powershell
 npm.cmd run build
-cargo build --release -p asv-desktop
+cargo build --release -p asv-desktop --features custom-protocol
 ```
 
-Some enterprise Windows Application Control policies block newly compiled Rust
-build scripts or the prebuilt Tauri CLI binding. Do not disable the security
-policy. Use the debug `cargo build -p asv-desktop` check locally and perform the
-release build on the configured CI runner, or ask the system administrator for
-an approved code-signing/allow-list workflow.
+`custom-protocol` embeds the production frontend in the executable. Omit it
+for a debug build that intentionally connects to the Vite development server.
+
+Windows Smart App Control can block unsigned Rust build scripts and PlatformIO
+tools. It has no per-application exception. Prefer an approved signed toolchain,
+CI runner, or development machine whose security policy is intended for local
+compilation. Turning Smart App Control off is a global security decision, not a
+project setup step.
 
 ## Hardware
 
 1. Install the Arduino AVR core.
-2. Compile and upload `firmware/examples/GpioDemo/GpioDemo.ino`.
+2. Compile and upload either `firmware/examples/GpioDemo/GpioDemo.ino` or the
+   explicit Milestone 2 target `firmware/examples/AdcDemo/AdcDemo.ino`.
 3. Close Arduino Serial Monitor so the desktop app can own the serial port.
 4. Select the port in the app and choose **Connect**.
 

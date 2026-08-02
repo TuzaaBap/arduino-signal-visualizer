@@ -17,6 +17,7 @@ pub fn run() {
             connection::disconnect,
             validation::validation_start,
             validation::validation_acknowledge_gpio,
+            validation::validation_acknowledge_adc,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Arduino Signal Visualizer");

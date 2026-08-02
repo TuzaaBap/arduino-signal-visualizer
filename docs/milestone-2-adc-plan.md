@@ -1,7 +1,7 @@
 # Milestone 2 plan: ADC
 
-This plan defines the next vertical slice. ADC implementation must not begin
-until it is approved.
+This plan defined the ADC vertical slice and was approved for implementation.
+The completed results are recorded in `docs/milestone-2-validation.md`.
 
 ## Recommended architecture
 

@@ -259,7 +259,8 @@ select {
 
 select:focus,
 button:focus-visible,
-.board-pin:focus-visible {
+.board-pin:focus-visible,
+.analog-card:focus-visible {
   outline: 2px solid var(--teal-bright);
   outline-offset: 2px;
 }
@@ -414,6 +415,53 @@ button:focus-visible,
   background-size: 28px 28px;
 }
 
+.board-workspace--analog {
+  overflow: auto;
+}
+
+.workspace-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0b141a;
+}
+
+.workspace-tabs button {
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.workspace-tabs button.active {
+  color: #071719;
+  background: var(--teal-bright);
+}
+
+.board-content,
+.board-and-summary {
+  display: grid;
+  min-height: 0;
+}
+
+.board-content {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.board-workspace--analog .board-content {
+  grid-template-rows: minmax(280px, 1fr) auto;
+  gap: 12px;
+}
+
+.board-and-summary {
+  position: relative;
+}
+
 .board-workspace-heading h2 {
   font-size: 22px;
 }
@@ -421,6 +469,13 @@ button:focus-visible,
 .observation-summary {
   color: var(--muted);
   font-size: 11px;
+}
+
+.board-and-summary > .observation-summary {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 0;
 }
 
 .observation-summary span {
@@ -562,6 +617,11 @@ button:focus-visible,
   filter: drop-shadow(0 0 7px rgb(75 227 138 / 75%));
 }
 
+.board-pin--analog circle {
+  fill: #153339;
+  stroke: #55aaa8;
+}
+
 .power-led circle {
   fill: var(--green);
   filter: drop-shadow(0 0 5px rgb(75 227 138 / 55%));
@@ -672,6 +732,142 @@ button:focus-visible,
   line-height: 1.5;
 }
 
+.analog-panel {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgb(11 19 25 / 86%);
+}
+
+.analog-panel-heading,
+.analog-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.analog-panel-heading h3,
+.analog-panel-heading p {
+  margin: 0;
+}
+
+.analog-panel-heading h3 {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.mock-badge {
+  padding: 5px 7px;
+  border: 1px solid rgb(247 189 88 / 38%);
+  border-radius: 6px;
+  color: #ffd58b;
+  background: rgb(100 68 13 / 32%);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.analog-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.analog-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #2b3d47;
+  border-radius: 9px;
+  color: var(--text);
+  background: #101b22;
+  text-align: left;
+}
+
+.analog-card:hover,
+.analog-card--selected {
+  border-color: var(--teal-bright);
+}
+
+.analog-card--selected {
+  box-shadow: inset 0 0 0 1px rgb(97 221 211 / 24%);
+}
+
+.analog-card-title strong {
+  color: var(--teal-bright);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 15px;
+}
+
+.analog-card-title span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.analog-values {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  min-height: 55px;
+  margin: 9px 0 7px;
+}
+
+.analog-values div {
+  min-width: 0;
+}
+
+.analog-values dt {
+  color: var(--muted);
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.analog-values dd {
+  overflow: hidden;
+  margin: 2px 0 0;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analog-values--empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.analog-sparkline {
+  width: 100%;
+  height: 34px;
+}
+
+.analog-sparkline path {
+  fill: none;
+  stroke: #263942;
+  stroke-width: 0.8;
+}
+
+.analog-sparkline polyline {
+  fill: none;
+  stroke: var(--teal-bright);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.analog-disclaimer {
+  margin: 9px 0 0;
+  color: #788994;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.logic-badge--analog {
+  border-color: rgb(97 221 211 / 38%);
+  color: var(--teal-bright);
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -698,5 +894,9 @@ button:focus-visible,
   .pin-inspector {
     margin: 14px;
     padding: 16px;
+  }
+
+  .analog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

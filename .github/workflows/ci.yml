@@ -45,7 +45,7 @@ jobs:
       - name: Lint Rust workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Compile desktop application
-        run: cargo build --release -p asv-desktop
+        run: cargo build --release -p asv-desktop --features custom-protocol
 
   firmware:
     name: Arduino Uno firmware
@@ -64,6 +64,13 @@ jobs:
           --library firmware/ArduinoSignalVisualizer
           --warnings all
           firmware/examples/GpioDemo
+      - name: Compile ADC example
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/examples/AdcDemo
       - name: Compile native protocol test
         run: >-
           g++ -std=c++11 -Wall -Wextra -Werror
@@ -74,4 +81,4 @@ jobs:
         run: >-
           /tmp/asv-protocol-test
           protocol/test-vectors/digital-write-d13-high.hex
-
+          protocol/test-vectors/analog-a0-midscale.hex

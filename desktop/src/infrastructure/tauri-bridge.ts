@@ -2,6 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
+  AdcBatch,
+  AdcSample,
   BoardDescriptor,
   ConnectionStatus,
   GpioBatch,
@@ -14,6 +16,7 @@ export interface BackendHandlers {
   onConnectionStatus: (status: ConnectionStatus) => void;
   onBoardInfo: (board: BoardDescriptor) => void;
   onGpioBatch: (batch: GpioBatch) => void;
+  onAdcBatch: (batch: AdcBatch) => void;
   onDiagnostic: (diagnostic: ProtocolDiagnostic) => void;
 }
 
@@ -33,6 +36,9 @@ export async function subscribeToBackend(
     ),
     listen<GpioBatch>("asv://gpio-batch", (event) =>
       handlers.onGpioBatch(event.payload),
+    ),
+    listen<AdcBatch>("asv://adc-batch", (event) =>
+      handlers.onAdcBatch(event.payload),
     ),
     listen<ProtocolDiagnostic>("asv://protocol-diagnostic", (event) =>
       handlers.onDiagnostic(event.payload),
@@ -73,4 +79,16 @@ export async function acknowledgeValidationGpio(
   updates: GpioUpdate[],
 ): Promise<void> {
   return invoke("validation_acknowledge_gpio", { updates });
+}
+
+export interface AdcUiChannelState {
+  channel: number;
+  bufferLength: number;
+  latest: AdcSample;
+}
+
+export async function acknowledgeValidationAdc(
+  channels: AdcUiChannelState[],
+): Promise<void> {
+  return invoke("validation_acknowledge_adc", { channels });
 }

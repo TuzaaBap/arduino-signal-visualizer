@@ -11,12 +11,16 @@ pub const HEADER_LEN: usize = 10;
 pub const CRC_LEN: usize = 2;
 pub const MAX_DECODED_PACKET_LEN: usize = 128;
 pub const MAX_ENCODED_FRAME_LEN: usize = MAX_DECODED_PACKET_LEN + 2;
+pub const ADC_EVENT_VERSION: u8 = 1;
+pub const UNO_ANALOG_CHANNEL_COUNT: u8 = 6;
+pub const MAX_REFERENCE_MV: u16 = 6_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PacketType {
     BoardHello = 0x01,
     DigitalGpio = 0x10,
+    AnalogSample = 0x11,
 }
 
 impl TryFrom<u8> for PacketType {
@@ -26,6 +30,7 @@ impl TryFrom<u8> for PacketType {
         match value {
             0x01 => Ok(Self::BoardHello),
             0x10 => Ok(Self::DigitalGpio),
+            0x11 => Ok(Self::AnalogSample),
             other => Err(ProtocolError::UnknownPacketType(other)),
         }
     }
@@ -63,6 +68,14 @@ pub enum GpioObservationSource {
     ModeChange,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AdcReferenceMode {
+    Default,
+    Internal,
+    External,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ProtocolEvent {
@@ -78,6 +91,15 @@ pub enum ProtocolEvent {
         direction: GpioDirection,
         level: GpioLevel,
         source: GpioObservationSource,
+    },
+    AnalogSample {
+        sequence: u16,
+        board_timestamp_us: u32,
+        channel: u8,
+        raw_value: u16,
+        resolution_bits: u8,
+        reference_mode: AdcReferenceMode,
+        reference_mv: u16,
     },
 }
 
@@ -140,6 +162,20 @@ pub enum ProtocolError {
     },
     #[error("invalid {field} value {value}")]
     InvalidField { field: &'static str, value: u8 },
+    #[error("unsupported ADC event version {0}")]
+    UnsupportedAdcEventVersion(u8),
+    #[error("invalid ADC channel {0}; Uno channels are 0 through 5")]
+    InvalidAdcChannel(u8),
+    #[error("unsupported ADC resolution {0} bits")]
+    UnsupportedAdcResolution(u8),
+    #[error("ADC raw value {raw} exceeds {maximum} for {resolution_bits}-bit resolution")]
+    AdcRawOutOfRange {
+        raw: u16,
+        maximum: u16,
+        resolution_bits: u8,
+    },
+    #[error("invalid ADC reference voltage {0} mV")]
+    InvalidAdcReferenceVoltage(u16),
 }
 
 pub fn encode_packet(packet: &Packet) -> Vec<u8> {
@@ -197,6 +233,7 @@ pub fn decode_event(packet: &Packet) -> Result<ProtocolEvent, ProtocolError> {
     match packet.packet_type {
         PacketType::BoardHello => decode_hello(packet),
         PacketType::DigitalGpio => decode_gpio(packet),
+        PacketType::AnalogSample => decode_analog_sample(packet),
     }
 }
 
@@ -293,6 +330,64 @@ fn decode_gpio(packet: &Packet) -> Result<ProtocolEvent, ProtocolError> {
         direction,
         level,
         source,
+    })
+}
+
+fn decode_analog_sample(packet: &Packet) -> Result<ProtocolEvent, ProtocolError> {
+    require_payload_len(packet, 8)?;
+    if packet.payload[0] != ADC_EVENT_VERSION {
+        return Err(ProtocolError::UnsupportedAdcEventVersion(packet.payload[0]));
+    }
+
+    let channel = packet.payload[1];
+    if channel >= UNO_ANALOG_CHANNEL_COUNT {
+        return Err(ProtocolError::InvalidAdcChannel(channel));
+    }
+
+    let raw_value = u16::from_le_bytes([packet.payload[2], packet.payload[3]]);
+    let resolution_bits = packet.payload[4];
+    if !matches!(resolution_bits, 8 | 10 | 12 | 14 | 16) {
+        return Err(ProtocolError::UnsupportedAdcResolution(resolution_bits));
+    }
+    let maximum = if resolution_bits == 16 {
+        u16::MAX
+    } else {
+        (1_u16 << resolution_bits) - 1
+    };
+    if raw_value > maximum {
+        return Err(ProtocolError::AdcRawOutOfRange {
+            raw: raw_value,
+            maximum,
+            resolution_bits,
+        });
+    }
+
+    let reference_mode = match packet.payload[5] {
+        0 => AdcReferenceMode::Default,
+        1 => AdcReferenceMode::Internal,
+        2 => AdcReferenceMode::External,
+        value => {
+            return Err(ProtocolError::InvalidField {
+                field: "ADC reference mode",
+                value,
+            });
+        }
+    };
+    let reference_mv = u16::from_le_bytes([packet.payload[6], packet.payload[7]]);
+    let reference_is_unknown_external =
+        reference_mode == AdcReferenceMode::External && reference_mv == 0;
+    if !reference_is_unknown_external && !(1..=MAX_REFERENCE_MV).contains(&reference_mv) {
+        return Err(ProtocolError::InvalidAdcReferenceVoltage(reference_mv));
+    }
+
+    Ok(ProtocolEvent::AnalogSample {
+        sequence: packet.sequence,
+        board_timestamp_us: packet.board_timestamp_us,
+        channel,
+        raw_value,
+        resolution_bits,
+        reference_mode,
+        reference_mv,
     })
 }
 

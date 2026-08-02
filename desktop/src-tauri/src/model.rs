@@ -1,4 +1,4 @@
-use asv_protocol::{GpioDirection, GpioLevel, GpioObservationSource};
+use asv_protocol::{AdcReferenceMode, GpioDirection, GpioLevel, GpioObservationSource};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
@@ -54,6 +54,25 @@ pub struct GpioUpdate {
 pub struct GpioBatch {
     pub updates: Vec<GpioUpdate>,
     pub dropped_ui_events: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdcSample {
+    pub sequence: u16,
+    pub board_timestamp_us: u32,
+    pub channel: u8,
+    pub raw_value: u16,
+    pub resolution_bits: u8,
+    pub reference_mode: AdcReferenceMode,
+    pub reference_mv: u16,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdcBatch {
+    pub samples: Vec<AdcSample>,
+    pub coalesced_ui_samples: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

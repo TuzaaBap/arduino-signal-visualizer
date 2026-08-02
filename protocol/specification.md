@@ -61,7 +61,8 @@ Sent once from `ASV.begin()` after the USB serial connection is ready.
 | 6 | 1 | Reset cause |
 | 7 | 2 | Nominal logic supply in millivolts |
 
-Capability bit 0 represents digital GPIO instrumentation.
+Capability bit 0 represents digital GPIO instrumentation. Capability bit 1
+represents instrumented ADC sampling.
 
 Reset causes are `0` unknown, `1` power-on, `2` external, `3` brown-out,
 `4` watchdog, and `5` software.
@@ -84,6 +85,38 @@ are `0` low and `1` high. Sources are `0` write, `1` read, and `2` mode change.
 The voltage shown for digital GPIO is a logical estimate derived from the
 board's nominal supply. It is not an ADC measurement.
 
+### `0x11` ADC sample
+
+ADC sample payload schema version 1:
+
+| Payload offset | Size | Field |
+| --- | ---: | --- |
+| 0 | 1 | ADC event schema version (`1`) |
+| 1 | 1 | Analog channel (`0` through `5` for Uno A0-A5) |
+| 2 | 2 | Raw ADC count |
+| 4 | 1 | ADC resolution in bits |
+| 5 | 1 | Reference mode |
+| 6 | 2 | Reference voltage in millivolts |
+
+Supported resolution values are 8, 10, 12, 14, and 16 bits. The raw count must
+not exceed `(2^resolution_bits) - 1`.
+
+Reference modes are `0` default supply, `1` internal, and `2` external. A zero
+reference voltage is permitted only for an external reference whose voltage is
+unknown; the desktop must then omit calculated voltage. Non-zero reference
+voltages must be no greater than 6,000 mV.
+
+The board timestamp is carried in the common header. The Uno never transmits a
+floating-point voltage. Consumers calculate voltage from validated integer
+metadata as:
+
+```text
+voltage_mV = raw_count * reference_mV / full_scale_count
+```
+
+The displayed value is an estimate based on the declared reference, not a
+calibrated or oscilloscope-grade measurement.
+
 ## Receiver fault handling
 
 - Empty delimiters are ignored.
@@ -102,4 +135,3 @@ board's nominal supply. It is not an ADC measurement.
 Files in `protocol/test-vectors` contain complete COBS frames as lowercase hex,
 including the final zero delimiter. Both Rust and native firmware tests consume
 the same files.
-

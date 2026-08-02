@@ -41,6 +41,23 @@ export interface GpioBatch {
   droppedUiEvents: number;
 }
 
+export type AdcReferenceMode = "default" | "internal" | "external";
+
+export interface AdcSample {
+  sequence: number;
+  boardTimestampUs: number;
+  channel: number;
+  rawValue: number;
+  resolutionBits: number;
+  referenceMode: AdcReferenceMode;
+  referenceMv: number;
+}
+
+export interface AdcBatch {
+  samples: AdcSample[];
+  coalescedUiSamples: number;
+}
+
 export interface BoardDescriptor {
   boardType: "arduinoUnoR3";
   firmwareVersion: {

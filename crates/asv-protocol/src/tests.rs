@@ -7,6 +7,15 @@ fn parse_hex(input: &str) -> Vec<u8> {
         .collect()
 }
 
+fn adc_packet(payload: Vec<u8>) -> Packet {
+    Packet {
+        packet_type: PacketType::AnalogSample,
+        sequence: 0x2345,
+        board_timestamp_us: 0x1122_3344,
+        payload,
+    }
+}
+
 #[test]
 fn shared_gpio_vector_decodes_and_reencodes() {
     let vector = parse_hex(include_str!(
@@ -30,6 +39,33 @@ fn shared_gpio_vector_decodes_and_reencodes() {
             direction: GpioDirection::Output,
             level: GpioLevel::High,
             source: GpioObservationSource::Write,
+        }
+    );
+}
+
+#[test]
+fn shared_adc_vector_decodes_and_reencodes() {
+    let vector = parse_hex(include_str!(
+        "../../../protocol/test-vectors/analog-a0-midscale.hex"
+    ));
+    let (delimiter, encoded) = vector.split_last().expect("vector is non-empty");
+    assert_eq!(*delimiter, 0);
+
+    let packet = decode_frame(encoded).expect("shared ADC vector decodes");
+    assert_eq!(packet.sequence, 0x2345);
+    assert_eq!(packet.board_timestamp_us, 0x1122_3344);
+    assert_eq!(packet.payload, [1, 0, 0, 2, 10, 0, 0x88, 0x13]);
+    assert_eq!(encode_packet(&packet), vector);
+    assert_eq!(
+        decode_event(&packet).expect("typed ADC event decodes"),
+        ProtocolEvent::AnalogSample {
+            sequence: 0x2345,
+            board_timestamp_us: 0x1122_3344,
+            channel: 0,
+            raw_value: 512,
+            resolution_bits: 10,
+            reference_mode: AdcReferenceMode::Default,
+            reference_mv: 5_000,
         }
     );
 }
@@ -165,4 +201,85 @@ fn declared_length_must_exactly_match_frame() {
 #[test]
 fn malformed_cobs_is_reported() {
     assert_eq!(decode_frame(&[3, 1]), Err(ProtocolError::MalformedCobs));
+}
+
+#[test]
+fn adc_payload_length_is_exact() {
+    let packet = adc_packet(vec![1, 0, 0, 2, 10, 0, 0x88]);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::InvalidTypedPayloadLength {
+            packet_type: PacketType::AnalogSample,
+            expected: 8,
+            actual: 7,
+        })
+    );
+}
+
+#[test]
+fn unsupported_adc_event_version_is_rejected() {
+    let packet = adc_packet(vec![2, 0, 0, 2, 10, 0, 0x88, 0x13]);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::UnsupportedAdcEventVersion(2))
+    );
+}
+
+#[test]
+fn unsupported_adc_resolution_is_rejected() {
+    let packet = adc_packet(vec![1, 0, 0, 1, 9, 0, 0x88, 0x13]);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::UnsupportedAdcResolution(9))
+    );
+}
+
+#[test]
+fn invalid_adc_channel_is_rejected() {
+    let packet = adc_packet(vec![1, 6, 0, 1, 10, 0, 0x88, 0x13]);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::InvalidAdcChannel(6))
+    );
+}
+
+#[test]
+fn adc_raw_count_must_fit_declared_resolution() {
+    let packet = adc_packet(vec![1, 0, 0, 4, 10, 0, 0x88, 0x13]);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::AdcRawOutOfRange {
+            raw: 1_024,
+            maximum: 1_023,
+            resolution_bits: 10,
+        })
+    );
+}
+
+#[test]
+fn adc_crc_corruption_is_rejected() {
+    let packet = adc_packet(vec![1, 0, 0, 2, 10, 0, 0x88, 0x13]);
+    let framed = encode_packet(&packet);
+    let mut decoded = cobs::decode(&framed[..framed.len() - 1]).expect("valid COBS");
+    let payload_byte = HEADER_LEN + 2;
+    decoded[payload_byte] ^= 0x01;
+
+    assert!(matches!(
+        decode_frame(&cobs::encode(&decoded)),
+        Err(ProtocolError::CrcMismatch { .. })
+    ));
+}
+
+#[test]
+fn adc_sequence_gap_is_reported() {
+    let mut tracker = SequenceTracker::default();
+    let first = adc_packet(vec![1, 0, 0, 2, 10, 0, 0x88, 0x13]);
+    let mut later = first.clone();
+    later.sequence = first.sequence.wrapping_add(3);
+
+    assert_eq!(tracker.observe(&first), SequenceObservation::First);
+    assert_eq!(
+        tracker.observe(&later),
+        SequenceObservation::Missing { count: 2 }
+    );
 }

@@ -11,6 +11,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 hardware-validation = []
+custom-protocol = ["tauri/custom-protocol"]
 
 [[bin]]
 name = "arduino-signal-visualizer"

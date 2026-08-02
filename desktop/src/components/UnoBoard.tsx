@@ -2,16 +2,23 @@ import type { GpioState } from "../domain/gpio-store";
 
 interface UnoBoardProps {
   pins: GpioState;
-  selectedPin: number;
-  onSelectPin: (pin: number) => void;
+  selectedDigitalPin: number;
+  selectedAnalogChannel: number;
+  activeTab: "digital" | "analog";
+  onSelectDigitalPin: (pin: number) => void;
+  onSelectAnalogChannel: (channel: number) => void;
 }
 
 const DIGITAL_PINS = Array.from({ length: 14 }, (_, index) => 13 - index);
+const ANALOG_CHANNELS = [0, 1, 2, 3, 4, 5] as const;
 
 export function UnoBoard({
   pins,
-  selectedPin,
-  onSelectPin,
+  selectedDigitalPin,
+  selectedAnalogChannel,
+  activeTab,
+  onSelectDigitalPin,
+  onSelectAnalogChannel,
 }: UnoBoardProps) {
   return (
     <div className="board-stage">
@@ -21,10 +28,10 @@ export function UnoBoard({
         role="img"
         aria-labelledby="uno-title uno-description"
       >
-        <title id="uno-title">Interactive Arduino Uno R3 digital pins</title>
+        <title id="uno-title">Interactive Arduino Uno R3 pins</title>
         <desc id="uno-description">
-          Select a digital pin from D0 through D13 to inspect its latest
-          instrumented state.
+          Select a digital pin from D0 through D13 or an analog input from A0
+          through A5 to inspect its latest instrumented state.
         </desc>
         <defs>
           <linearGradient id="pcb" x1="0" y1="0" x2="1" y2="1">
@@ -94,7 +101,7 @@ export function UnoBoard({
         {DIGITAL_PINS.map((pin, index) => {
           const state = pins[pin];
           const high = state?.level === "high";
-          const selected = selectedPin === pin;
+          const selected = activeTab === "digital" && selectedDigitalPin === pin;
           const x = 229 + index * 35.2;
           return (
             <g
@@ -105,11 +112,11 @@ export function UnoBoard({
               role="button"
               tabIndex={0}
               aria-label={`Digital pin D${pin}, ${state?.level ?? "not observed"}`}
-              onClick={() => onSelectPin(pin)}
+              onClick={() => onSelectDigitalPin(pin)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  onSelectPin(pin);
+                  onSelectDigitalPin(pin);
                 }
               }}
             >
@@ -122,6 +129,47 @@ export function UnoBoard({
                   {pin === 0 ? "RX" : "TX"}
                 </text>
               )}
+            </g>
+          );
+        })}
+
+        <text className="header-label" x="615" y="346" textAnchor="middle">
+          ANALOG IN
+        </text>
+        <rect className="pin-header analog-pin-header" x="506" y="354" width="218" height="38" rx="6" />
+        {ANALOG_CHANNELS.map((channel, index) => {
+          const selected =
+            activeTab === "analog" && selectedAnalogChannel === channel;
+          const x = 528 + index * 35;
+          return (
+            <g
+              key={`analog-${channel}`}
+              className={`board-pin board-pin--analog ${
+                selected ? "board-pin--selected" : ""
+              }`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Analog input A${channel}`}
+              onClick={() => onSelectAnalogChannel(channel)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectAnalogChannel(channel);
+                }
+              }}
+            >
+              <rect
+                className="pin-hit-target"
+                x={x - 15}
+                y="354"
+                width="30"
+                height="54"
+                fill="transparent"
+              />
+              <circle cx={x} cy="373" r="9" />
+              <text x={x} y="407" textAnchor="middle">
+                A{channel}
+              </text>
             </g>
           );
         })}
@@ -147,4 +195,3 @@ export function UnoBoard({
     </div>
   );
 }
-

@@ -9,14 +9,16 @@ Instrumented Uno sketch
   -> Rust serial reader
   -> framing and typed decoder
   -> bounded delivery queue
-  -> 30 Hz GPIO batches
-  -> React GPIO state and SVG
+  -> recording/validation branch (all validated ADC events)
+  -> 30 Hz GPIO and ADC UI batches
+  -> bounded React state and interactive Uno SVG
 ```
 
 The Arduino side reports intent and observed return values. The Rust side treats
 every serial byte as untrusted and is the only layer that understands packet
-layout. React only understands typed concepts such as pin, direction, and
-logic level.
+layout. React only understands typed concepts such as pin, direction, logic
+level, raw ADC count, resolution, and integer reference metadata. It never
+parses wire bytes.
 
 ## Repository boundaries
 
@@ -47,17 +49,19 @@ all worker threads can finish promptly before another connection starts.
 
 ## Queue behavior
 
-The source-to-UI queue is bounded to 256 messages. This prevents unlimited
-memory growth under heavy traffic. The delivery worker keeps only the latest UI
-state per GPIO pin during each 33 ms window. Sequence and framing diagnostics
-remain visible.
+The source-to-delivery queue is bounded to 256 messages. GPIO keeps its existing
+non-blocking behavior. Valid ADC samples use backpressure rather than being
+dropped, and every sample reaches the recording/validation branch before UI
+coalescing.
 
-Future session recording will branch from validated events before UI
-coalescing, so recording can retain every event without making the display
-render at wire speed.
+The delivery worker keeps only the latest GPIO state per pin during each 33 ms
+window. ADC UI delivery uses a bounded 64-sample queue per channel and always
+retains the newest value. React then keeps the latest 180 samples per channel
+for the small trend graphs. These separate bounds prevent both native and UI
+memory growth without changing the validated GPIO path.
 
 ## Mock Mode
 
-Mock Mode is clearly labelled and produces deterministic D2-D13 GPIO events
-through the same typed delivery path as serial data. It does not simulate
-electrical behavior and is not presented as a connected board.
+Mock Mode is clearly labelled and produces deterministic D2-D13 GPIO and A0-A5
+ADC events through the same typed delivery path as serial data. It does not
+simulate electrical behavior and is not presented as a connected board.

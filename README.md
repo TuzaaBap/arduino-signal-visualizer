@@ -4,8 +4,8 @@ Arduino Signal Visualizer is a cross-platform desktop application that turns
 instrumentation events from a real Arduino Uno R3 into understandable live
 visuals.
 
-Version 1 observes operations made through the `ASV` Arduino library. It is not
-a simulator and it does not passively inspect unmodified sketches.
+The application observes operations made through the `ASV` Arduino library. It
+is not a simulator and it does not passively inspect unmodified sketches.
 
 ## Milestone 1
 
@@ -19,6 +19,14 @@ The first milestone provides an end-to-end digital GPIO path:
 A deterministic **Mock Mode** exercises the same typed event path when hardware
 is unavailable.
 
+## Milestone 2
+
+The second milestone adds instrumented `ASV.analogRead(A0)` support and a
+versioned ADC event. The Analog tab displays A0-A5 raw counts,
+desktop-calculated voltage, reference metadata, percentage of full scale, and
+bounded trend graphs. These trends are intentionally not presented as
+oscilloscope-grade or calibrated measurements.
+
 ## Development
 
 See [docs/development-setup.md](docs/development-setup.md) for prerequisites and
@@ -28,4 +36,3 @@ commands. Protocol details are in
 ## License
 
 MIT
-

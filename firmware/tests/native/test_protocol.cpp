@@ -28,33 +28,46 @@ std::vector<uint8_t> readHexVector(const char* path) {
   return bytes;
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::cerr << "usage: test_protocol <shared-vector.hex>\n";
-    return 2;
-  }
-
-  const std::vector<uint8_t> expected = readHexVector(argv[1]);
-  const uint8_t payload[] = {13, 1, 1, 0};
+bool matchesVector(const std::vector<uint8_t>& expected, uint8_t packetType,
+                   uint16_t sequence, uint32_t timestamp,
+                   const uint8_t* payload, size_t payloadLength) {
   uint8_t actual[asv::kMaximumEncodedFrameLength];
   const size_t actualLength =
-      asv::encodePacket(asv::kDigitalGpioPacket, 0x1234, 0x01020304, payload,
-                        sizeof(payload), actual, sizeof(actual));
-
+      asv::encodePacket(packetType, sequence, timestamp, payload, payloadLength,
+                        actual, sizeof(actual));
   if (actualLength != expected.size()) {
-    std::cerr << "frame length mismatch\n";
-    return 1;
+    return false;
   }
   for (size_t index = 0; index < actualLength; ++index) {
     if (actual[index] != expected[index]) {
-      std::cerr << "frame differs at byte " << index << "\n";
-      return 1;
+      return false;
     }
   }
-
-  std::cout << "shared protocol vector passed\n";
-  return 0;
+  return true;
 }
 
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (argc != 3) {
+    std::cerr << "usage: test_protocol <gpio-vector.hex> <adc-vector.hex>\n";
+    return 2;
+  }
+
+  const uint8_t gpioPayload[] = {13, 1, 1, 0};
+  if (!matchesVector(readHexVector(argv[1]), asv::kDigitalGpioPacket, 0x1234,
+                     0x01020304, gpioPayload, sizeof(gpioPayload))) {
+    std::cerr << "GPIO vector mismatch\n";
+    return 1;
+  }
+
+  const uint8_t adcPayload[] = {1, 0, 0, 2, 10, 0, 0x88, 0x13};
+  if (!matchesVector(readHexVector(argv[2]), asv::kAnalogSamplePacket, 0x2345,
+                     0x11223344, adcPayload, sizeof(adcPayload))) {
+    std::cerr << "ADC vector mismatch\n";
+    return 1;
+  }
+
+  std::cout << "shared GPIO and ADC protocol vectors passed\n";
+  return 0;
+}
