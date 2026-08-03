@@ -27,3 +27,21 @@ The decoded CRC is `0xE985`. The final `00` is the frame delimiter.
 - 5,000 mV nominal reference
 
 The decoded CRC is `0x3718`. The final `00` is the frame delimiter.
+
+`pwm-d9-half-duty.hex` represents:
+
+- protocol version 1
+- PWM write packet type `0x12`
+- sequence `0x3456`
+- board timestamp `0x55667788` microseconds
+- PWM event schema version 2
+- hardware PWM pin D9
+- requested duty value 128
+- 8-bit duty resolution
+- hardware PWM output mode
+- Timer 1 channel A, phase-correct PWM, non-inverting output
+- 16,000,000 Hz source clock, prescaler 64, TOP 255
+- OCR1A value 128 and TCNT1 snapshot 42
+- TCCR1A `0x81` and TCCR1B `0x03`
+
+The decoded CRC is `0x19A5`. The final `00` is the frame delimiter.

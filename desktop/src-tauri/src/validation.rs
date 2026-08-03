@@ -14,6 +14,7 @@ use crate::{
     connection::{self, ConnectionManager},
     model::{
         AdcSample, ConnectionStatus, DiagnosticCategory, GpioBatch, GpioUpdate, ProtocolDiagnostic,
+        PwmUpdate,
     },
 };
 
@@ -39,13 +40,18 @@ struct ValidationSnapshot {
     status_history: Vec<ConnectionStatus>,
     pins: BTreeMap<u8, PinValidation>,
     analog_channels: BTreeMap<u8, AdcValidation>,
+    pwm_pins: BTreeMap<u8, PwmValidation>,
     received_gpio_updates: u64,
     received_adc_samples: u64,
+    received_pwm_updates: u64,
     ui_acknowledgements: u64,
     ui_matches_backend: bool,
     ui_adc_acknowledgements: u64,
     ui_adc_match_observed: bool,
     maximum_ui_adc_buffer_length: usize,
+    ui_pwm_acknowledgements: u64,
+    ui_pwm_match_observed: bool,
+    maximum_ui_pwm_buffer_length: usize,
     diagnostics: Vec<ProtocolDiagnostic>,
     crc_failures: u64,
     dropped_packet_warnings: u64,
@@ -71,12 +77,30 @@ struct AdcValidation {
     ui_latest: Option<AdcSample>,
 }
 
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PwmValidation {
+    update_count: u64,
+    minimum_duty: Option<u16>,
+    maximum_duty: Option<u16>,
+    latest: Option<PwmUpdate>,
+    ui_latest: Option<PwmUpdate>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdcUiChannelState {
     channel: u8,
     buffer_length: usize,
     latest: AdcSample,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PwmUiPinState {
+    pin: u8,
+    buffer_length: usize,
+    latest: PwmUpdate,
 }
 
 impl ValidationRecorder {
@@ -90,7 +114,7 @@ impl ValidationRecorder {
         Self {
             report_path,
             state: Mutex::new(ValidationSnapshot {
-                schema_version: 1,
+                schema_version: 2,
                 application_version: env!("CARGO_PKG_VERSION"),
                 started_unix_ms: now,
                 last_update_unix_ms: now,
@@ -99,13 +123,18 @@ impl ValidationRecorder {
                 status_history: Vec::new(),
                 pins: BTreeMap::new(),
                 analog_channels: BTreeMap::new(),
+                pwm_pins: BTreeMap::new(),
                 received_gpio_updates: 0,
                 received_adc_samples: 0,
+                received_pwm_updates: 0,
                 ui_acknowledgements: 0,
                 ui_matches_backend: true,
                 ui_adc_acknowledgements: 0,
                 ui_adc_match_observed: false,
                 maximum_ui_adc_buffer_length: 0,
+                ui_pwm_acknowledgements: 0,
+                ui_pwm_match_observed: false,
+                maximum_ui_pwm_buffer_length: 0,
                 diagnostics: Vec::new(),
                 crc_failures: 0,
                 dropped_packet_warnings: 0,
@@ -194,6 +223,27 @@ impl ValidationRecorder {
         self.write_report(false);
     }
 
+    pub fn record_pwm_update(&self, update: PwmUpdate) {
+        if !self.enabled() {
+            return;
+        }
+        self.with_state(|state| {
+            state.received_pwm_updates += 1;
+            let pin = state.pwm_pins.entry(update.pin).or_default();
+            pin.update_count += 1;
+            pin.minimum_duty = Some(
+                pin.minimum_duty
+                    .map_or(update.duty_value, |value| value.min(update.duty_value)),
+            );
+            pin.maximum_duty = Some(
+                pin.maximum_duty
+                    .map_or(update.duty_value, |value| value.max(update.duty_value)),
+            );
+            pin.latest = Some(update);
+        });
+        self.write_report(false);
+    }
+
     pub fn record_ui_state(&self, updates: Vec<GpioUpdate>) {
         if !self.enabled() {
             return;
@@ -232,6 +282,29 @@ impl ValidationRecorder {
                     .is_some_and(|(backend, ui)| backend == ui)
             }) {
                 state.ui_adc_match_observed = true;
+            }
+        });
+        self.write_report(false);
+    }
+
+    pub fn record_pwm_ui_state(&self, pins: Vec<PwmUiPinState>) {
+        if !self.enabled() {
+            return;
+        }
+        self.with_state(|state| {
+            state.ui_pwm_acknowledgements += 1;
+            for pin in pins {
+                state.maximum_ui_pwm_buffer_length =
+                    state.maximum_ui_pwm_buffer_length.max(pin.buffer_length);
+                state.pwm_pins.entry(pin.pin).or_default().ui_latest = Some(pin.latest);
+            }
+            if state.pwm_pins.values().all(|pin| {
+                pin.latest
+                    .as_ref()
+                    .zip(pin.ui_latest.as_ref())
+                    .is_some_and(|(backend, ui)| backend == ui)
+            }) {
+                state.ui_pwm_match_observed = true;
             }
         });
         self.write_report(false);
@@ -322,6 +395,14 @@ pub fn validation_acknowledge_adc(
     recorder.record_adc_ui_state(channels);
 }
 
+#[tauri::command]
+pub fn validation_acknowledge_pwm(
+    pins: Vec<PwmUiPinState>,
+    recorder: State<'_, ValidationRecorder>,
+) {
+    recorder.record_pwm_ui_state(pins);
+}
+
 pub fn record_status(app: &AppHandle, status: ConnectionStatus) {
     app.state::<ValidationRecorder>().record_status(status);
 }
@@ -336,6 +417,10 @@ pub fn record_batch(app: &AppHandle, batch: &GpioBatch) {
 
 pub fn record_adc_sample(app: &AppHandle, sample: AdcSample) {
     app.state::<ValidationRecorder>().record_adc_sample(sample);
+}
+
+pub fn record_pwm_update(app: &AppHandle, update: PwmUpdate) {
+    app.state::<ValidationRecorder>().record_pwm_update(update);
 }
 
 pub fn record_diagnostic(app: &AppHandle, diagnostic: ProtocolDiagnostic) {

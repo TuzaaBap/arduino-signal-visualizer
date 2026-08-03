@@ -18,6 +18,7 @@ pub fn run() {
             validation::validation_start,
             validation::validation_acknowledge_gpio,
             validation::validation_acknowledge_adc,
+            validation::validation_acknowledge_pwm,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Arduino Signal Visualizer");

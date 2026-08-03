@@ -49,8 +49,9 @@ bool matchesVector(const std::vector<uint8_t>& expected, uint8_t packetType,
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
-    std::cerr << "usage: test_protocol <gpio-vector.hex> <adc-vector.hex>\n";
+  if (argc != 4) {
+    std::cerr << "usage: test_protocol <gpio-vector.hex> <adc-vector.hex> "
+                 "<pwm-vector.hex>\n";
     return 2;
   }
 
@@ -68,6 +69,17 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << "shared GPIO and ADC protocol vectors passed\n";
+  const uint8_t pwmPayload[] = {
+      2,    9,    128,  0,    8,    1,    1,    0,
+      2,    1,    0x00, 0x24, 0xf4, 0x00, 0x40, 0x00,
+      0xff, 0x00, 0x80, 0x00, 0x2a, 0x00, 0x81, 0x03,
+  };
+  if (!matchesVector(readHexVector(argv[3]), asv::kPwmWritePacket, 0x3456,
+                     0x55667788, pwmPayload, sizeof(pwmPayload))) {
+    std::cerr << "PWM vector mismatch\n";
+    return 1;
+  }
+
+  std::cout << "shared GPIO, ADC, and PWM protocol vectors passed\n";
   return 0;
 }

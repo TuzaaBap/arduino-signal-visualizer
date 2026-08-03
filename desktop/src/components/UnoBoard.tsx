@@ -1,196 +1,360 @@
 import type { GpioState } from "../domain/gpio-store";
+import type { PwmState } from "../domain/pwm-store";
+import {
+  UNO_R3_ANALOG_PINS,
+  UNO_R3_AUXILIARY_HEADER,
+  UNO_R3_DIGITAL_PINS,
+  UNO_R3_POWER_HEADER,
+  describeCapabilities,
+  type UnoHeaderPinDefinition,
+} from "../domain/uno-r3-pinout";
 
 interface UnoBoardProps {
   pins: GpioState;
+  pwm: PwmState;
   selectedDigitalPin: number;
   selectedAnalogChannel: number;
-  activeTab: "digital" | "analog";
+  selectedPwmPin: number;
+  activeTab: "digital" | "analog" | "pwm";
   onSelectDigitalPin: (pin: number) => void;
   onSelectAnalogChannel: (channel: number) => void;
+  onSelectPwmPin: (pin: number) => void;
 }
 
-const DIGITAL_PINS = Array.from({ length: 14 }, (_, index) => 13 - index);
-const ANALOG_CHANNELS = [0, 1, 2, 3, 4, 5] as const;
+const digitalPinX = (index: number): number =>
+  index < 6 ? 378 + index * 31 : 574 + (index - 6) * 31;
+
+const auxiliaryPinX = [254, 285, 316, 347] as const;
+
+function auxiliaryPinCoordinate(index: number): number {
+  const coordinate = auxiliaryPinX[index];
+  if (coordinate === undefined) {
+    throw new RangeError(`Missing Uno auxiliary-header coordinate ${index}`);
+  }
+  return coordinate;
+}
+
+function StaticHeaderSocket({
+  definition,
+  x,
+  y,
+  compact = false,
+  labelPlacement = "below",
+}: {
+  definition: UnoHeaderPinDefinition;
+  x: number;
+  y: number;
+  compact?: boolean;
+  labelPlacement?: "above" | "below";
+}) {
+  return (
+    <g className="static-header-pin">
+      <title>
+        {definition.label}: {definition.description}
+        {definition.aliasOf ? ` (same signal as ${definition.aliasOf})` : ""}
+      </title>
+      <rect x={x - 11} y={y - 12} width="22" height="24" rx="2" />
+      <circle cx={x} cy={y} r="6" />
+      <text
+        className={compact ? "static-pin-label static-pin-label--compact" : "static-pin-label"}
+        x={x}
+        y={labelPlacement === "above" ? y - 25 : y + 28}
+        textAnchor="middle"
+      >
+        {definition.label}
+      </text>
+    </g>
+  );
+}
 
 export function UnoBoard({
   pins,
+  pwm,
   selectedDigitalPin,
   selectedAnalogChannel,
+  selectedPwmPin,
   activeTab,
   onSelectDigitalPin,
   onSelectAnalogChannel,
+  onSelectPwmPin,
 }: UnoBoardProps) {
   return (
     <div className="board-stage">
       <svg
         className="uno-board"
-        viewBox="0 0 860 480"
+        viewBox="0 0 940 650"
         role="img"
         aria-labelledby="uno-title uno-description"
       >
-        <title id="uno-title">Interactive Arduino Uno R3 pins</title>
+        <title id="uno-title">Interactive Arduino Uno board</title>
         <desc id="uno-description">
-          Select a digital pin from D0 through D13 or an analog input from A0
-          through A5 to inspect its latest instrumented state.
+          Physically representative Arduino Uno board with selectable D0 to
+          D13, A0 to A5, and accurate PWM, UART, SPI, I2C, interrupt and power
+          pin markings. The drawing is an educational diagram, not a PCB
+          manufacturing file.
         </desc>
         <defs>
           <linearGradient id="pcb" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#087f87" />
-            <stop offset="1" stopColor="#075760" />
+            <stop offset="0" stopColor="#07939b" />
+            <stop offset="0.48" stopColor="#087c84" />
+            <stop offset="1" stopColor="#05626a" />
           </linearGradient>
-          <filter id="board-shadow" x="-20%" y="-20%" width="140%" height="160%">
+          <linearGradient id="metal" x1="0" y1="0" x2="0.8" y2="1">
+            <stop offset="0" stopColor="#edf2f3" />
+            <stop offset="0.5" stopColor="#aab6bb" />
+            <stop offset="1" stopColor="#7f8c92" />
+          </linearGradient>
+          <filter id="board-shadow" x="-20%" y="-20%" width="145%" height="155%">
             <feDropShadow
               dx="0"
-              dy="18"
-              stdDeviation="16"
+              dy="15"
+              stdDeviation="14"
               floodColor="#02080d"
-              floodOpacity="0.5"
+              floodOpacity="0.55"
             />
           </filter>
+          <pattern id="pcb-texture" width="7" height="7" patternUnits="userSpaceOnUse">
+            <path d="M0 1 H7 M1 0 V7" stroke="#ffffff" strokeOpacity="0.025" strokeWidth="0.5" />
+          </pattern>
         </defs>
 
         <path
           className="board-shape"
-          d="M120 68 H748 Q770 68 770 90 V388 Q770 410 748 410 H120 Q98 410 98 388 V335 H72 V145 H98 V90 Q98 68 120 68Z"
+          d="M144 36 H824 L872 84 V169 Q889 175 889 195 V510 Q889 531 870 536 V580 Q870 608 842 608 H151 Q123 608 123 580 V554 H93 V436 H123 V285 H86 V145 H123 V63 Q123 36 144 36Z"
           fill="url(#pcb)"
           filter="url(#board-shadow)"
         />
-        <circle className="mount-hole" cx="132" cy="105" r="13" />
-        <circle className="mount-hole" cx="730" cy="105" r="13" />
-        <circle className="mount-hole" cx="730" cy="370" r="13" />
-        <circle className="mount-hole" cx="132" cy="370" r="13" />
+        <path
+          className="board-texture"
+          d="M144 36 H824 L872 84 V169 Q889 175 889 195 V510 Q889 531 870 536 V580 Q870 608 842 608 H151 Q123 608 123 580 V554 H93 V436 H123 V285 H86 V145 H123 V63 Q123 36 144 36Z"
+          fill="url(#pcb-texture)"
+        />
 
-        <rect className="usb-shell" x="38" y="165" width="112" height="96" rx="8" />
-        <rect className="usb-mouth" x="38" y="186" width="34" height="54" rx="3" />
-        <rect className="barrel-jack" x="76" y="306" width="104" height="72" rx="8" />
-        <circle className="barrel-hole" cx="91" cy="342" r="20" />
+        <circle className="mount-hole" cx="160" cy="74" r="18" />
+        <circle className="mount-hole" cx="835" cy="190" r="18" />
+        <circle className="mount-hole" cx="831" cy="563" r="18" />
+        <circle className="mount-hole" cx="159" cy="566" r="18" />
 
-        <rect className="chip" x="330" y="208" width="250" height="88" rx="8" />
-        {Array.from({ length: 14 }, (_, index) => (
-          <g key={`leg-${index}`}>
-            <rect x={344 + index * 16} y="198" width="7" height="10" rx="1" />
-            <rect x={344 + index * 16} y="296" width="7" height="10" rx="1" />
-          </g>
-        ))}
-        <circle cx="355" cy="252" r="6" fill="#57616b" />
-        <text className="chip-label" x="455" y="246" textAnchor="middle">
-          ATmega328P
-        </text>
-        <text className="chip-subtitle" x="455" y="266" textAnchor="middle">
-          INSTRUMENTED MCU
-        </text>
+        <g className="usb-connector">
+          <path d="M24 149 H164 Q176 149 176 161 V268 Q176 280 164 280 H24Z" fill="url(#metal)" />
+          <rect x="24" y="165" width="55" height="98" rx="4" />
+          <path d="M82 164 H161 V268 H82 L70 252 V180Z" />
+          <circle cx="157" cy="170" r="5" />
+          <circle cx="157" cy="260" r="5" />
+        </g>
 
-        <g className="crystal">
-          <rect x="262" y="230" width="45" height="24" rx="11" />
-          <text x="284" y="247" textAnchor="middle">
-            16
+        <g className="reset-button">
+          <rect x="126" y="55" width="72" height="58" rx="5" />
+          <circle cx="162" cy="84" r="21" />
+          <text x="118" y="85" transform="rotate(-90 118 85)" textAnchor="middle">
+            RESET
           </text>
         </g>
 
-        <g className="uno-mark">
-          <text x="616" y="230">ARDUINO</text>
-          <text x="616" y="265">UNO</text>
-          <path d="M615 286 H700" />
+        <g className="barrel-connector">
+          <path d="M54 447 H193 Q209 447 209 463 V564 Q209 580 193 580 H54Z" />
+          <rect x="54" y="460" width="65" height="108" rx="7" />
+          <circle cx="105" cy="514" r="28" />
+          <circle cx="105" cy="514" r="15" />
         </g>
 
-        <text className="header-label" x="420" y="104" textAnchor="middle">
-          DIGITAL GPIO
+        <text className="external-header-label" x="523" y="27" textAnchor="middle">
+          DIGITAL
         </text>
-        <rect className="pin-header" x="205" y="116" width="506" height="48" rx="6" />
+        <rect className="pin-header" x="240" y="49" width="307" height="38" rx="4" />
+        <rect className="pin-header" x="560" y="49" width="245" height="38" rx="4" />
 
-        {DIGITAL_PINS.map((pin, index) => {
+        {UNO_R3_AUXILIARY_HEADER.map((definition, index) => (
+          <StaticHeaderSocket
+            key={definition.label}
+            definition={definition}
+            x={auxiliaryPinCoordinate(index)}
+            y={68}
+            compact
+          />
+        ))}
+
+        {UNO_R3_DIGITAL_PINS.map((definition, index) => {
+          const { pin, capabilities, mcuPort, boardMarkings } = definition;
           const state = pins[pin];
           const high = state?.level === "high";
-          const selected = activeTab === "digital" && selectedDigitalPin === pin;
-          const x = 229 + index * 35.2;
+          const pwmCapable = capabilities.includes("pwm");
+          const pwmActive = (pwm[pin]?.latest.dutyValue ?? 0) > 0;
+          const selected =
+            (activeTab === "digital" && selectedDigitalPin === pin) ||
+            (activeTab === "pwm" && selectedPwmPin === pin);
+          const selectable =
+            activeTab === "digital" || (activeTab === "pwm" && pwmCapable);
+          const x = digitalPinX(index);
+          const selectPin = () => {
+            if (!selectable) return;
+            if (activeTab === "pwm") {
+              onSelectPwmPin(pin);
+            } else {
+              onSelectDigitalPin(pin);
+            }
+          };
+          const usesSerial = capabilities.includes("uart-rx") || capabilities.includes("uart-tx");
+          const usesSpi = capabilities.some((capability) => capability.startsWith("spi-"));
+          const usesInterrupt = capabilities.includes("external-interrupt");
+          const usesLed = capabilities.includes("led");
           return (
             <g
               key={pin}
               className={`board-pin ${high ? "board-pin--high" : ""} ${
                 selected ? "board-pin--selected" : ""
-              }`}
+              } ${pwmCapable ? "board-pin--pwm-capable" : ""} ${
+                activeTab === "pwm" && pwmActive ? "board-pin--pwm-active" : ""
+              } ${activeTab === "pwm" && !pwmCapable ? "board-pin--unavailable" : ""} ${
+                activeTab === "analog" ? "board-pin--inactive-mode" : ""
+              } ${usesSerial ? "board-pin--serial" : ""} ${
+                usesSpi ? "board-pin--spi" : ""
+              } ${usesInterrupt ? "board-pin--interrupt" : ""}`}
               role="button"
-              tabIndex={0}
-              aria-label={`Digital pin D${pin}, ${state?.level ?? "not observed"}`}
-              onClick={() => onSelectDigitalPin(pin)}
+              tabIndex={selectable ? 0 : -1}
+              aria-disabled={!selectable}
+              aria-label={`Digital pin D${pin}, ${mcuPort}, ${describeCapabilities(capabilities)}, ${state?.level ?? "not observed"}`}
+              onClick={selectPin}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+                if (selectable && (event.key === "Enter" || event.key === " ")) {
                   event.preventDefault();
-                  onSelectDigitalPin(pin);
+                  selectPin();
                 }
               }}
             >
-              <circle cx={x} cy="140" r="11" />
-              <text x={x} y="188" textAnchor="middle">
+              <title>
+                D{pin} / {mcuPort}: {describeCapabilities(capabilities)}
+              </title>
+              <rect className="pin-hit-target" x={x - 13} y="44" width="26" height="91" fill="transparent" />
+              <rect className="socket-body" x={x - 11} y="56" width="22" height="24" rx="2" />
+              <circle cx={x} cy="68" r="6" />
+              <text className="digital-pin-number" x={x} y="101" textAnchor="middle">
                 {pin}
               </text>
-              {(pin === 0 || pin === 1) && (
-                <text className="serial-label" x={x} y="207" textAnchor="middle">
-                  {pin === 0 ? "RX" : "TX"}
+              {boardMarkings?.map((marking, markingIndex) => (
+                <text
+                  key={marking}
+                  className={`special-pin-label special-pin-label--${
+                    markingIndex === 0 ? "primary" : "secondary"
+                  } ${usesLed ? "special-pin-label--led" : ""}`}
+                  x={x}
+                  y={117 + markingIndex * 10}
+                  textAnchor="middle"
+                >
+                  {marking}
                 </text>
-              )}
+              ))}
             </g>
           );
         })}
 
-        <text className="header-label" x="615" y="346" textAnchor="middle">
-          ANALOG IN
-        </text>
-        <rect className="pin-header analog-pin-header" x="506" y="354" width="218" height="38" rx="6" />
-        {ANALOG_CHANNELS.map((channel, index) => {
-          const selected =
-            activeTab === "analog" && selectedAnalogChannel === channel;
-          const x = 528 + index * 35;
+        <g className="usb-bridge">
+          <rect className="qfp-chip" x="205" y="184" width="86" height="86" rx="4" />
+          {Array.from({ length: 7 }, (_, index) => (
+            <g key={`usb-qfp-${index}`}>
+              <rect x={215 + index * 10} y="175" width="5" height="9" />
+              <rect x={215 + index * 10} y="270" width="5" height="9" />
+              <rect x="196" y={194 + index * 10} width="9" height="5" />
+              <rect x="291" y={194 + index * 10} width="9" height="5" />
+            </g>
+          ))}
+          <circle cx="220" cy="199" r="4" />
+          <text x="248" y="217" textAnchor="middle">ATmega</text>
+          <text x="248" y="233" textAnchor="middle">16U2</text>
+          <text className="component-purpose" x="248" y="253" textAnchor="middle">USB SERIAL</text>
+        </g>
+
+        <g className="main-mcu">
+          <rect className="chip" x="438" y="350" width="372" height="126" rx="9" />
+          {Array.from({ length: 14 }, (_, index) => (
+            <g key={`mcu-leg-${index}`}>
+              <rect x={454 + index * 25.5} y="340" width="9" height="10" rx="1" />
+              <rect x={454 + index * 25.5} y="476" width="9" height="10" rx="1" />
+            </g>
+          ))}
+          <path d="M438 396 q18 0 18 18 q0 18 -18 18" />
+          <circle cx="782" cy="378" r="7" />
+          <text className="chip-label" x="624" y="401" textAnchor="middle">ATMEGA328P</text>
+          <text className="chip-subtitle" x="624" y="425" textAnchor="middle">8-BIT AVR MCU</text>
+          <text className="chip-subtitle" x="624" y="448" textAnchor="middle">INSTRUMENTED BY ASV</text>
+        </g>
+
+        <g className="uno-silkscreen">
+          <path className="infinity-mark" d="M518 187 C493 158 457 161 457 187 C457 213 493 216 518 187 C543 158 579 161 579 187 C579 213 543 216 518 187Z" />
+          <path className="logo-minus" d="M475 187 H495" />
+          <path className="logo-plus" d="M541 187 H561 M551 177 V197" />
+          <text className="uno-word" x="635" y="197" textAnchor="middle">UNO</text>
+          <text className="arduino-word" x="570" y="253" textAnchor="middle">ARDUINO</text>
+          <text className="open-source-mark" x="570" y="272" textAnchor="middle">OPEN-SOURCE ELECTRONICS</text>
+        </g>
+
+        <g className="status-led tx-led">
+          <circle cx="315" cy="199" r="7" />
+          <text x="315" y="218" textAnchor="middle">TX</text>
+        </g>
+        <g className="status-led rx-led">
+          <circle cx="315" cy="229" r="7" />
+          <text x="315" y="248" textAnchor="middle">RX</text>
+        </g>
+        <g className="status-led signal-led">
+          <circle className={pins[13]?.level === "high" ? "active" : ""} cx="315" cy="259" r="7" />
+          <text x="315" y="278" textAnchor="middle">L</text>
+        </g>
+        <g className="status-led power-led">
+          <circle cx="786" cy="215" r="7" />
+          <text x="786" y="234" textAnchor="middle">ON</text>
+        </g>
+
+        <rect className="pin-header bottom-header" x="337" y="544" width="245" height="38" rx="4" />
+        {UNO_R3_POWER_HEADER.map((definition, index) => (
+          <StaticHeaderSocket
+            key={`${definition.label}-${index}`}
+            definition={definition}
+            x={351 + index * 31}
+            y={563}
+            compact
+            labelPlacement="above"
+          />
+        ))}
+        <text className="external-header-label" x="460" y="628" textAnchor="middle">POWER</text>
+
+        <rect className="pin-header bottom-header" x="617" y="544" width="183" height="38" rx="4" />
+        {UNO_R3_ANALOG_PINS.map((definition, index) => {
+          const { channel, mcuPort, capabilities, boardMarking } = definition;
+          const selected = activeTab === "analog" && selectedAnalogChannel === channel;
+          const selectable = activeTab === "analog";
+          const x = 631 + index * 31;
           return (
             <g
               key={`analog-${channel}`}
-              className={`board-pin board-pin--analog ${
-                selected ? "board-pin--selected" : ""
-              }`}
+              className={`board-pin board-pin--analog ${selected ? "board-pin--selected" : ""} ${
+                selectable ? "" : "board-pin--inactive-mode"
+              } ${boardMarking ? "board-pin--i2c" : ""}`}
               role="button"
-              tabIndex={0}
-              aria-label={`Analog input A${channel}`}
-              onClick={() => onSelectAnalogChannel(channel)}
+              tabIndex={selectable ? 0 : -1}
+              aria-disabled={!selectable}
+              aria-label={`Analog input A${channel}, digital D${definition.digitalPin}, ${mcuPort}${boardMarking ? `, I2C ${boardMarking}` : ""}`}
+              onClick={() => selectable && onSelectAnalogChannel(channel)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
+                if (selectable && (event.key === "Enter" || event.key === " ")) {
                   event.preventDefault();
                   onSelectAnalogChannel(channel);
                 }
               }}
             >
-              <rect
-                className="pin-hit-target"
-                x={x - 15}
-                y="354"
-                width="30"
-                height="54"
-                fill="transparent"
-              />
-              <circle cx={x} cy="373" r="9" />
-              <text x={x} y="407" textAnchor="middle">
-                A{channel}
-              </text>
+              <title>
+                A{channel} / D{definition.digitalPin} / {mcuPort}: ADC input and GPIO{boardMarking ? `, I2C ${boardMarking}` : ""}
+              </title>
+              <rect className="pin-hit-target" x={x - 14} y="505" width="28" height="82" fill="transparent" />
+              <rect className="socket-body" x={x - 11} y="551" width="22" height="24" rx="2" />
+              <circle cx={x} cy="563" r="6" />
+              <text className="analog-pin-number" x={x} y="533" textAnchor="middle">A{channel}</text>
+              {boardMarking && <text className="analog-special-label" x={x} y="518" textAnchor="middle">{boardMarking}</text>}
             </g>
           );
         })}
 
-        <g className="power-led">
-          <circle cx="677" cy="323" r="8" />
-          <text x="677" y="347" textAnchor="middle">
-            ON
-          </text>
-        </g>
-        <g className="signal-led">
-          <circle
-            className={pins[13]?.level === "high" ? "active" : ""}
-            cx="638"
-            cy="323"
-            r="8"
-          />
-          <text x="638" y="347" textAnchor="middle">
-            L
-          </text>
-        </g>
+        <text className="external-header-label" x="709" y="628" textAnchor="middle">ANALOG IN</text>
       </svg>
     </div>
   );

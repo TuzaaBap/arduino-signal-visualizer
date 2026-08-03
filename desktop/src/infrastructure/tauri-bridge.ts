@@ -9,6 +9,8 @@ import type {
   GpioBatch,
   GpioUpdate,
   ProtocolDiagnostic,
+  PwmBatch,
+  PwmUpdate,
   SerialPortDescriptor,
 } from "../domain/types";
 
@@ -17,6 +19,7 @@ export interface BackendHandlers {
   onBoardInfo: (board: BoardDescriptor) => void;
   onGpioBatch: (batch: GpioBatch) => void;
   onAdcBatch: (batch: AdcBatch) => void;
+  onPwmBatch: (batch: PwmBatch) => void;
   onDiagnostic: (diagnostic: ProtocolDiagnostic) => void;
 }
 
@@ -39,6 +42,9 @@ export async function subscribeToBackend(
     ),
     listen<AdcBatch>("asv://adc-batch", (event) =>
       handlers.onAdcBatch(event.payload),
+    ),
+    listen<PwmBatch>("asv://pwm-batch", (event) =>
+      handlers.onPwmBatch(event.payload),
     ),
     listen<ProtocolDiagnostic>("asv://protocol-diagnostic", (event) =>
       handlers.onDiagnostic(event.payload),
@@ -91,4 +97,16 @@ export async function acknowledgeValidationAdc(
   channels: AdcUiChannelState[],
 ): Promise<void> {
   return invoke("validation_acknowledge_adc", { channels });
+}
+
+export interface PwmUiPinState {
+  pin: number;
+  bufferLength: number;
+  latest: PwmUpdate;
+}
+
+export async function acknowledgeValidationPwm(
+  pins: PwmUiPinState[],
+): Promise<void> {
+  return invoke("validation_acknowledge_pwm", { pins });
 }

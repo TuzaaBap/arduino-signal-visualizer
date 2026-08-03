@@ -415,7 +415,8 @@ button:focus-visible,
   background-size: 28px 28px;
 }
 
-.board-workspace--analog {
+.board-workspace--analog,
+.board-workspace--pwm {
   overflow: auto;
 }
 
@@ -453,7 +454,8 @@ button:focus-visible,
   grid-template-rows: minmax(0, 1fr);
 }
 
-.board-workspace--analog .board-content {
+.board-workspace--analog .board-content,
+.board-workspace--pwm .board-content {
   grid-template-rows: minmax(280px, 1fr) auto;
   gap: 12px;
 }
@@ -486,96 +488,168 @@ button:focus-visible,
 }
 
 .board-stage {
+  position: relative;
   display: grid;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
   place-items: center;
 }
 
 .uno-board {
-  width: min(100%, 900px);
-  max-height: 100%;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
 }
 
+.board-shape {
+  stroke: #36aeb2;
+  stroke-width: 2;
+}
+
+.board-texture {
+  pointer-events: none;
+}
+
 .mount-hole {
-  fill: #0b1820;
-  stroke: #a3b7bd;
+  fill: #071218;
+  stroke: #c1d0d3;
+  stroke-width: 5;
+  filter: drop-shadow(0 2px 1px rgb(0 0 0 / 45%));
+}
+
+.usb-connector > path:first-child {
+  stroke: #e4ebed;
+  stroke-width: 3;
+}
+
+.usb-connector rect,
+.usb-connector > path:nth-of-type(2) {
+  fill: #222e35;
+  stroke: #606e74;
+  stroke-width: 2;
+}
+
+.usb-connector circle {
+  fill: #5d686d;
+}
+
+.reset-button rect {
+  fill: #d7dfe1;
+  stroke: #f4f7f7;
+  stroke-width: 2;
+}
+
+.reset-button circle {
+  fill: #e8eceb;
+  stroke: #aab6ba;
   stroke-width: 4;
 }
 
-.usb-shell {
-  fill: #a6b3b8;
-  stroke: #d8e0e2;
-  stroke-width: 3;
+.reset-button text {
+  fill: rgb(255 255 255 / 75%);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
 }
 
-.usb-mouth,
-.barrel-hole {
-  fill: #273239;
-}
-
-.barrel-jack {
+.barrel-connector path,
+.barrel-connector rect {
   fill: #172228;
-  stroke: #384750;
+  stroke: #394950;
   stroke-width: 3;
+}
+
+.barrel-connector circle:first-of-type {
+  fill: #0e171c;
+  stroke: #45535a;
+  stroke-width: 3;
+}
+
+.barrel-connector circle:last-of-type {
+  fill: #030708;
+  stroke: #263137;
+  stroke-width: 2;
 }
 
 .chip {
-  fill: #151d22;
-  stroke: #3a474e;
-  stroke-width: 2;
+  fill: #11191e;
+  stroke: #303d44;
+  stroke-width: 3;
 }
 
 .chip-label,
 .chip-subtitle {
-  fill: #7c8a91;
+  fill: #89989e;
   font-family: ui-monospace, "Cascadia Code", monospace;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .chip-subtitle {
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: 0.2em;
 }
 
-.crystal rect {
-  fill: #c6cdd0;
+.main-mcu > rect:not(.chip) {
+  fill: #a7adb0;
 }
 
-.crystal text {
-  fill: #536068;
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.uno-mark text {
-  fill: rgb(255 255 255 / 76%);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-}
-
-.uno-mark text:nth-child(2) {
-  font-size: 32px;
-}
-
-.uno-mark path {
+.main-mcu > path {
   fill: none;
-  stroke: rgb(255 255 255 / 55%);
+  stroke: #4c5a61;
   stroke-width: 2;
+}
+
+.main-mcu > circle {
+  fill: #3c474d;
 }
 
 .header-label {
-  fill: rgb(255 255 255 / 70%);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.17em;
+  fill: rgb(255 255 255 / 82%);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+
+.external-header-label {
+  fill: rgb(235 245 247 / 92%);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.2em;
 }
 
 .pin-header {
-  fill: #19252c;
-  stroke: #40515b;
-  stroke-width: 2;
+  fill: #121b20;
+  stroke: #3f4e55;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 35%));
+}
+
+.static-header-pin rect,
+.board-pin .socket-body {
+  fill: #202a30;
+  stroke: #313e45;
+  stroke-width: 1;
+}
+
+.static-header-pin circle {
+  fill: #081116;
+  stroke: #77868d;
+  stroke-width: 1.5;
+}
+
+.static-header-pin .static-pin-label {
+  fill: #d6e1e4;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.static-header-pin .static-pin-label--compact {
+  font-size: 7.5px;
 }
 
 .board-pin {
@@ -583,9 +657,9 @@ button:focus-visible,
 }
 
 .board-pin circle {
-  fill: #202e36;
-  stroke: #6b7a82;
-  stroke-width: 3;
+  fill: #0b1419;
+  stroke: #6f7e85;
+  stroke-width: 2;
   transition:
     fill 140ms ease,
     stroke 140ms ease,
@@ -593,33 +667,183 @@ button:focus-visible,
 }
 
 .board-pin text {
-  fill: #b7c4ca;
+  fill: #d3dee1;
   font-family: ui-monospace, "Cascadia Code", monospace;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
   pointer-events: none;
 }
 
-.board-pin .serial-label {
-  fill: #8ad8d2;
+.board-pin .special-pin-label,
+.board-pin .analog-special-label {
+  fill: #a4b5bb;
   font-size: 7px;
+}
+
+.board-pin .digital-pin-number,
+.board-pin .analog-pin-number {
+  font-size: 11px;
+}
+
+.board-pin--pwm-capable .special-pin-label {
+  fill: var(--amber);
+}
+
+.board-pin--serial .special-pin-label {
+  fill: #ff87ca;
+}
+
+.board-pin--spi .special-pin-label {
+  fill: #c9a5ff;
+}
+
+.board-pin--interrupt:not(.board-pin--pwm-capable) .special-pin-label {
+  fill: #ff9e71;
+}
+
+.board-pin--pwm-capable .special-pin-label--primary {
+  fill: var(--amber);
+}
+
+.board-pin--spi .special-pin-label--secondary {
+  fill: #c9a5ff;
+}
+
+.board-pin--interrupt .special-pin-label--secondary {
+  fill: #ff9e71;
+}
+
+.board-pin .special-pin-label--led.special-pin-label--primary {
+  fill: var(--amber);
+}
+
+.board-pin--i2c .analog-special-label {
+  fill: var(--teal-bright);
 }
 
 .board-pin:hover circle,
 .board-pin--selected circle {
   stroke: var(--teal-bright);
-  stroke-width: 4;
+  stroke-width: 3;
 }
 
 .board-pin--high circle {
   fill: var(--green);
   stroke: #c1ffda;
-  filter: drop-shadow(0 0 7px rgb(75 227 138 / 75%));
+  filter: drop-shadow(0 0 5px rgb(75 227 138 / 75%));
 }
 
 .board-pin--analog circle {
-  fill: #153339;
+  fill: #102e33;
   stroke: #55aaa8;
+}
+
+.board-pin--pwm-capable circle {
+  stroke: #bc8d3f;
+}
+
+.board-pin--pwm-active circle {
+  fill: var(--amber);
+  stroke: #ffe0a6;
+  filter: drop-shadow(0 0 7px rgb(247 189 88 / 68%));
+}
+
+.board-pin--unavailable {
+  cursor: not-allowed;
+  opacity: 0.32;
+}
+
+.board-pin--unavailable:hover circle {
+  stroke: #6b7a82;
+  stroke-width: 2;
+}
+
+.board-pin--inactive-mode {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.board-pin--inactive-mode:hover circle {
+  stroke-width: 2;
+}
+
+.usb-bridge .qfp-chip {
+  fill: #12191e;
+  stroke: #38454c;
+  stroke-width: 2;
+}
+
+.usb-bridge > rect:not(.qfp-chip) {
+  fill: #aeb6b9;
+}
+
+.usb-bridge circle {
+  fill: #455159;
+}
+
+.usb-bridge text {
+  fill: #8d9ba1;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 10px;
+}
+
+.usb-bridge .component-purpose {
+  fill: #5d737b;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+}
+
+.uno-silkscreen text,
+.uno-silkscreen path {
+  fill: rgb(255 255 255 / 86%);
+}
+
+.uno-silkscreen .arduino-word {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.uno-silkscreen .uno-word {
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.uno-silkscreen .infinity-mark {
+  fill: none;
+  stroke: rgb(255 255 255 / 90%);
+  stroke-width: 12;
+}
+
+.uno-silkscreen .logo-minus,
+.uno-silkscreen .logo-plus {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 5;
+}
+
+.uno-silkscreen .open-source-mark {
+  fill: rgb(255 255 255 / 58%);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.status-led circle {
+  fill: #38494f;
+  stroke: #698087;
+  stroke-width: 1;
+}
+
+.status-led text {
+  fill: #d7e0e2;
+  font-size: 6px;
+  font-weight: 800;
+}
+
+.tx-led circle,
+.rx-led circle {
+  fill: #b2782c;
 }
 
 .power-led circle {
@@ -638,9 +862,41 @@ button:focus-visible,
 
 .power-led text,
 .signal-led text {
-  fill: #bfcbcf;
+  fill: #d7e0e2;
+  font-size: 6px;
+  font-weight: 800;
+}
+
+.board-capability-legend text {
+  font-family: ui-monospace, "Cascadia Code", monospace;
   font-size: 8px;
-  font-weight: 700;
+  font-weight: 800;
+}
+
+.board-capability-legend .legend-pwm {
+  fill: var(--amber);
+}
+
+.board-capability-legend .legend-uart {
+  fill: #ff87ca;
+}
+
+.board-capability-legend .legend-spi {
+  fill: #c9a5ff;
+}
+
+.board-capability-legend .legend-i2c {
+  fill: var(--teal-bright);
+}
+
+.board-capability-legend .legend-int {
+  fill: #ff9e71;
+}
+
+.board-capability-legend .legend-note {
+  fill: #81939c;
+  font-size: 7px;
+  font-weight: 500;
 }
 
 .legend {
@@ -856,6 +1112,106 @@ button:focus-visible,
   vector-effect: non-scaling-stroke;
 }
 
+.pwm-panel-heading {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pwm-panel-actions,
+.timebase-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pwm-panel-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.configured-badge {
+  padding: 5px 7px;
+  border: 1px solid rgb(97 221 211 / 35%);
+  border-radius: 6px;
+  color: var(--teal-bright);
+  background: rgb(16 78 76 / 24%);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.timebase-control {
+  padding: 2px;
+  border: 1px solid #2b3d47;
+  border-radius: 6px;
+  color: var(--muted);
+  background: #101b22;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 8px;
+}
+
+.timebase-control button {
+  display: grid;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--amber);
+  background: #1a2932;
+  place-items: center;
+}
+
+.timebase-control button:disabled {
+  color: #48565f;
+  cursor: default;
+}
+
+.pwm-requested-count {
+  grid-column: 1 / -1;
+}
+
+.pwm-waveform {
+  width: 100%;
+  height: 46px;
+  border: 1px solid rgb(43 61 71 / 70%);
+  border-radius: 4px;
+  background: #0b151b;
+}
+
+.pwm-waveform path {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.pwm-waveform .waveform-grid {
+  stroke: #263942;
+  stroke-width: 0.7;
+}
+
+.pwm-waveform .waveform-trace {
+  stroke: var(--amber);
+  stroke-width: 1.7;
+  stroke-linejoin: miter;
+}
+
+.pwm-facts dd {
+  font-size: 10px;
+}
+
+.pwm-card .analog-card-title strong {
+  color: var(--amber);
+}
+
+.pwm-card:hover,
+.pwm-card.analog-card--selected {
+  border-color: var(--amber);
+}
+
+.pwm-card.analog-card--selected {
+  box-shadow: inset 0 0 0 1px rgb(247 189 88 / 24%);
+}
+
 .analog-disclaimer {
   margin: 9px 0 0;
   color: #788994;
@@ -866,6 +1222,12 @@ button:focus-visible,
 .logic-badge--analog {
   border-color: rgb(97 221 211 / 38%);
   color: var(--teal-bright);
+}
+
+.logic-badge--pwm {
+  border-color: rgb(247 189 88 / 38%);
+  color: var(--amber);
+  background: rgb(100 68 13 / 22%);
 }
 
 @keyframes pulse {

@@ -12,6 +12,7 @@ ASV.pinMode(13, OUTPUT);
 ASV.digitalWrite(13, HIGH);
 int level = ASV.digitalRead(7);
 int raw = ASV.analogRead(A0);
+bool accepted = ASV.analogWrite(9, 128);
 ```
 
 The API follows the standard Arduino names to make migration visible and
@@ -21,6 +22,20 @@ mechanical.
 channel, raw count, resolution, reference mode, integer reference millivolts,
 and board timestamp. The Uno does not calculate or transmit floating-point
 voltage values.
+
+`ASV.analogWrite()` accepts only the Uno's real hardware PWM pins D3, D5, D6,
+D9, D10, and D11 and values from 0 through 255. It returns `false` without
+changing hardware or transmitting an event when either argument is invalid.
+Valid calls report the requested integer duty count plus a snapshot of the
+ATmega328P timer that drives the pin: timer/channel, waveform mode, polarity,
+source clock, prescaler, TOP, output compare, counter, and raw control
+registers. Duty endpoints are reported as constant LOW or HIGH because Arduino
+disconnects the timer output and does not produce a carrier waveform.
+
+The desktop derives the configured pulse period, frequency, HIGH time, LOW
+time, and duty from these integer fields. This is substantially more accurate
+than a rounded pin-frequency table, but it remains a timer configuration rather
+than an electrical voltage measurement.
 
 ## Compile the example
 
@@ -35,7 +50,15 @@ Compile the Milestone 2 ADC example:
 ```powershell
 arduino-cli compile --fqbn arduino:avr:uno `
   --library firmware/ArduinoSignalVisualizer `
-  firmware/examples/AdcDemo
+firmware/examples/AdcDemo
+```
+
+Compile the Milestone 3 PWM example:
+
+```powershell
+arduino-cli compile --fqbn arduino:avr:uno `
+  --library firmware/ArduinoSignalVisualizer `
+  firmware/examples/PwmDemo
 ```
 
 PlatformIO keeps the two build and upload targets explicit:
@@ -43,6 +66,7 @@ PlatformIO keeps the two build and upload targets explicit:
 ```powershell
 platformio run -e uno_gpio_demo
 platformio run --project-conf platformio-adc.ini -e uno_adc_demo
+platformio run --project-conf platformio-pwm.ini -e uno_pwm_demo
 ```
 
 Pins D0 and D1 carry the Uno's hardware UART. Instrumenting those pins while

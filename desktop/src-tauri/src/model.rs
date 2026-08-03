@@ -1,4 +1,7 @@
-use asv_protocol::{AdcReferenceMode, GpioDirection, GpioLevel, GpioObservationSource};
+use asv_protocol::{
+    AdcReferenceMode, GpioDirection, GpioLevel, GpioObservationSource, PwmOutputMode,
+    PwmOutputPolarity, PwmTimerChannel, PwmWaveformMode,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,6 +76,40 @@ pub struct AdcSample {
 pub struct AdcBatch {
     pub samples: Vec<AdcSample>,
     pub coalesced_ui_samples: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PwmUpdate {
+    pub sequence: u16,
+    pub board_timestamp_us: u32,
+    pub pin: u8,
+    pub duty_value: u16,
+    pub resolution_bits: u8,
+    pub output_mode: PwmOutputMode,
+    pub timer_number: u8,
+    pub timer_channel: PwmTimerChannel,
+    pub waveform_mode: PwmWaveformMode,
+    pub output_polarity: PwmOutputPolarity,
+    pub timer_clock_hz: u32,
+    pub prescaler: u16,
+    pub top: u16,
+    pub compare_value: u16,
+    pub counter_value: u16,
+    pub control_a: u8,
+    pub control_b: u8,
+    pub period_ns: Option<u64>,
+    pub high_time_ns: Option<u64>,
+    pub low_time_ns: Option<u64>,
+    pub frequency_millihz: Option<u64>,
+    pub duty_ppm: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PwmBatch {
+    pub updates: Vec<PwmUpdate>,
+    pub coalesced_ui_updates: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

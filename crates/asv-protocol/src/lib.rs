@@ -12,8 +12,12 @@ pub const CRC_LEN: usize = 2;
 pub const MAX_DECODED_PACKET_LEN: usize = 128;
 pub const MAX_ENCODED_FRAME_LEN: usize = MAX_DECODED_PACKET_LEN + 2;
 pub const ADC_EVENT_VERSION: u8 = 1;
+pub const PWM_EVENT_VERSION: u8 = 2;
 pub const UNO_ANALOG_CHANNEL_COUNT: u8 = 6;
 pub const MAX_REFERENCE_MV: u16 = 6_000;
+pub const UNO_PWM_RESOLUTION_BITS: u8 = 8;
+pub const UNO_PWM_PINS: [u8; 6] = [3, 5, 6, 9, 10, 11];
+pub const UNO_CPU_CLOCK_HZ: u32 = 16_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -21,6 +25,7 @@ pub enum PacketType {
     BoardHello = 0x01,
     DigitalGpio = 0x10,
     AnalogSample = 0x11,
+    PwmWrite = 0x12,
 }
 
 impl TryFrom<u8> for PacketType {
@@ -31,6 +36,7 @@ impl TryFrom<u8> for PacketType {
             0x01 => Ok(Self::BoardHello),
             0x10 => Ok(Self::DigitalGpio),
             0x11 => Ok(Self::AnalogSample),
+            0x12 => Ok(Self::PwmWrite),
             other => Err(ProtocolError::UnknownPacketType(other)),
         }
     }
@@ -76,6 +82,46 @@ pub enum AdcReferenceMode {
     External,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PwmOutputMode {
+    ConstantLow,
+    HardwarePwm,
+    ConstantHigh,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PwmTimerChannel {
+    A,
+    B,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PwmWaveformMode {
+    FastPwm,
+    PhaseCorrectPwm,
+    PhaseAndFrequencyCorrectPwm,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PwmOutputPolarity {
+    Disconnected,
+    NonInverting,
+    Inverting,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PwmTiming {
+    pub period_ns: u64,
+    pub high_time_ns: u64,
+    pub low_time_ns: u64,
+    pub frequency_millihz: u64,
+    pub duty_ppm: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ProtocolEvent {
@@ -100,6 +146,25 @@ pub enum ProtocolEvent {
         resolution_bits: u8,
         reference_mode: AdcReferenceMode,
         reference_mv: u16,
+    },
+    PwmWrite {
+        sequence: u16,
+        board_timestamp_us: u32,
+        pin: u8,
+        duty_value: u16,
+        resolution_bits: u8,
+        output_mode: PwmOutputMode,
+        timer_number: u8,
+        timer_channel: PwmTimerChannel,
+        waveform_mode: PwmWaveformMode,
+        output_polarity: PwmOutputPolarity,
+        timer_clock_hz: u32,
+        prescaler: u16,
+        top: u16,
+        compare_value: u16,
+        counter_value: u16,
+        control_a: u8,
+        control_b: u8,
     },
 }
 
@@ -176,6 +241,62 @@ pub enum ProtocolError {
     },
     #[error("invalid ADC reference voltage {0} mV")]
     InvalidAdcReferenceVoltage(u16),
+    #[error("unsupported PWM event version {0}")]
+    UnsupportedPwmEventVersion(u8),
+    #[error("pin D{0} is not a hardware PWM pin on the Arduino Uno")]
+    InvalidPwmPin(u8),
+    #[error("unsupported PWM resolution {0} bits")]
+    UnsupportedPwmResolution(u8),
+    #[error("PWM duty value {duty} exceeds {maximum} for {resolution_bits}-bit resolution")]
+    PwmDutyOutOfRange {
+        duty: u16,
+        maximum: u16,
+        resolution_bits: u8,
+    },
+    #[error("invalid PWM output mode {0}")]
+    InvalidPwmOutputMode(u8),
+    #[error("PWM output mode {actual:?} does not match duty value {duty}; expected {expected:?}")]
+    InvalidPwmModeForDuty {
+        duty: u16,
+        expected: PwmOutputMode,
+        actual: PwmOutputMode,
+    },
+    #[error("timer {actual} does not drive PWM pin D{pin}; expected timer {expected}")]
+    InvalidPwmTimer { pin: u8, expected: u8, actual: u8 },
+    #[error("timer channel {actual:?} does not drive PWM pin D{pin}; expected {expected:?}")]
+    InvalidPwmTimerChannel {
+        pin: u8,
+        expected: PwmTimerChannel,
+        actual: PwmTimerChannel,
+    },
+    #[error("invalid PWM waveform mode {0}")]
+    InvalidPwmWaveformMode(u8),
+    #[error("invalid PWM output polarity {0}")]
+    InvalidPwmOutputPolarity(u8),
+    #[error("PWM output polarity {actual:?} is incompatible with output mode {output_mode:?}")]
+    InvalidPwmPolarityForOutputMode {
+        output_mode: PwmOutputMode,
+        actual: PwmOutputPolarity,
+    },
+    #[error("invalid Uno timer clock {0} Hz")]
+    InvalidPwmTimerClock(u32),
+    #[error("invalid prescaler {prescaler} for timer {timer}")]
+    InvalidPwmPrescaler { timer: u8, prescaler: u16 },
+    #[error("invalid PWM TOP value {top} for timer {timer}")]
+    InvalidPwmTop { timer: u8, top: u16 },
+    #[error("PWM compare value {compare_value} exceeds TOP {top}")]
+    InvalidPwmCompare { compare_value: u16, top: u16 },
+    #[error("PWM counter value {counter_value} exceeds TOP {top}")]
+    InvalidPwmCounter { counter_value: u16, top: u16 },
+    #[error("raw timer waveform mode {raw_mode} does not match declared {declared:?}")]
+    PwmControlWaveformMismatch {
+        declared: PwmWaveformMode,
+        raw_mode: u8,
+    },
+    #[error("raw timer output mode does not match declared polarity {declared:?}")]
+    PwmControlPolarityMismatch { declared: PwmOutputPolarity },
+    #[error("raw timer clock-select bits do not match declared prescaler {declared}")]
+    PwmControlPrescalerMismatch { declared: u16 },
 }
 
 pub fn encode_packet(packet: &Packet) -> Vec<u8> {
@@ -234,6 +355,7 @@ pub fn decode_event(packet: &Packet) -> Result<ProtocolEvent, ProtocolError> {
         PacketType::BoardHello => decode_hello(packet),
         PacketType::DigitalGpio => decode_gpio(packet),
         PacketType::AnalogSample => decode_analog_sample(packet),
+        PacketType::PwmWrite => decode_pwm_write(packet),
     }
 }
 
@@ -389,6 +511,312 @@ fn decode_analog_sample(packet: &Packet) -> Result<ProtocolEvent, ProtocolError>
         reference_mode,
         reference_mv,
     })
+}
+
+fn decode_pwm_write(packet: &Packet) -> Result<ProtocolEvent, ProtocolError> {
+    require_payload_len(packet, 24)?;
+    if packet.payload[0] != PWM_EVENT_VERSION {
+        return Err(ProtocolError::UnsupportedPwmEventVersion(packet.payload[0]));
+    }
+
+    let pin = packet.payload[1];
+    if !UNO_PWM_PINS.contains(&pin) {
+        return Err(ProtocolError::InvalidPwmPin(pin));
+    }
+
+    let duty_value = u16::from_le_bytes([packet.payload[2], packet.payload[3]]);
+    let resolution_bits = packet.payload[4];
+    if resolution_bits != UNO_PWM_RESOLUTION_BITS {
+        return Err(ProtocolError::UnsupportedPwmResolution(resolution_bits));
+    }
+    let maximum = (1_u16 << resolution_bits) - 1;
+    if duty_value > maximum {
+        return Err(ProtocolError::PwmDutyOutOfRange {
+            duty: duty_value,
+            maximum,
+            resolution_bits,
+        });
+    }
+
+    let output_mode = match packet.payload[5] {
+        0 => PwmOutputMode::ConstantLow,
+        1 => PwmOutputMode::HardwarePwm,
+        2 => PwmOutputMode::ConstantHigh,
+        value => return Err(ProtocolError::InvalidPwmOutputMode(value)),
+    };
+    let expected_mode = if duty_value == 0 {
+        PwmOutputMode::ConstantLow
+    } else if duty_value == maximum {
+        PwmOutputMode::ConstantHigh
+    } else {
+        PwmOutputMode::HardwarePwm
+    };
+    if output_mode != expected_mode {
+        return Err(ProtocolError::InvalidPwmModeForDuty {
+            duty: duty_value,
+            expected: expected_mode,
+            actual: output_mode,
+        });
+    }
+
+    let timer_number = packet.payload[6];
+    let timer_channel = match packet.payload[7] {
+        0 => PwmTimerChannel::A,
+        1 => PwmTimerChannel::B,
+        value => {
+            return Err(ProtocolError::InvalidField {
+                field: "PWM timer channel",
+                value,
+            });
+        }
+    };
+    let (expected_timer, expected_channel) = expected_pwm_timer(pin);
+    if timer_number != expected_timer {
+        return Err(ProtocolError::InvalidPwmTimer {
+            pin,
+            expected: expected_timer,
+            actual: timer_number,
+        });
+    }
+    if timer_channel != expected_channel {
+        return Err(ProtocolError::InvalidPwmTimerChannel {
+            pin,
+            expected: expected_channel,
+            actual: timer_channel,
+        });
+    }
+
+    let waveform_mode = match packet.payload[8] {
+        1 => PwmWaveformMode::FastPwm,
+        2 => PwmWaveformMode::PhaseCorrectPwm,
+        3 => PwmWaveformMode::PhaseAndFrequencyCorrectPwm,
+        value => return Err(ProtocolError::InvalidPwmWaveformMode(value)),
+    };
+    let output_polarity = match packet.payload[9] {
+        0 => PwmOutputPolarity::Disconnected,
+        1 => PwmOutputPolarity::NonInverting,
+        2 => PwmOutputPolarity::Inverting,
+        value => return Err(ProtocolError::InvalidPwmOutputPolarity(value)),
+    };
+    let polarity_is_valid = match output_mode {
+        PwmOutputMode::HardwarePwm => output_polarity != PwmOutputPolarity::Disconnected,
+        PwmOutputMode::ConstantLow | PwmOutputMode::ConstantHigh => {
+            output_polarity == PwmOutputPolarity::Disconnected
+        }
+    };
+    if !polarity_is_valid {
+        return Err(ProtocolError::InvalidPwmPolarityForOutputMode {
+            output_mode,
+            actual: output_polarity,
+        });
+    }
+
+    let timer_clock_hz = u32::from_le_bytes([
+        packet.payload[10],
+        packet.payload[11],
+        packet.payload[12],
+        packet.payload[13],
+    ]);
+    if timer_clock_hz != UNO_CPU_CLOCK_HZ {
+        return Err(ProtocolError::InvalidPwmTimerClock(timer_clock_hz));
+    }
+    let prescaler = u16::from_le_bytes([packet.payload[14], packet.payload[15]]);
+    let valid_prescaler = match timer_number {
+        2 => matches!(prescaler, 1 | 8 | 32 | 64 | 128 | 256 | 1024),
+        _ => matches!(prescaler, 1 | 8 | 64 | 256 | 1024),
+    };
+    if !valid_prescaler {
+        return Err(ProtocolError::InvalidPwmPrescaler {
+            timer: timer_number,
+            prescaler,
+        });
+    }
+    let top = u16::from_le_bytes([packet.payload[16], packet.payload[17]]);
+    let top_is_valid = top > 0 && (timer_number == 1 || top <= u8::MAX as u16);
+    if !top_is_valid {
+        return Err(ProtocolError::InvalidPwmTop {
+            timer: timer_number,
+            top,
+        });
+    }
+    let compare_value = u16::from_le_bytes([packet.payload[18], packet.payload[19]]);
+    if compare_value > top {
+        return Err(ProtocolError::InvalidPwmCompare { compare_value, top });
+    }
+    let counter_value = u16::from_le_bytes([packet.payload[20], packet.payload[21]]);
+    if counter_value > top {
+        return Err(ProtocolError::InvalidPwmCounter { counter_value, top });
+    }
+    let control_a = packet.payload[22];
+    let control_b = packet.payload[23];
+    let raw_waveform_mode = raw_pwm_waveform_mode(timer_number, control_a, control_b);
+    if raw_waveform_mode != Some(waveform_mode) {
+        return Err(ProtocolError::PwmControlWaveformMismatch {
+            declared: waveform_mode,
+            raw_mode: raw_pwm_mode_number(timer_number, control_a, control_b),
+        });
+    }
+    if raw_pwm_output_polarity(control_a, timer_channel) != Some(output_polarity) {
+        return Err(ProtocolError::PwmControlPolarityMismatch {
+            declared: output_polarity,
+        });
+    }
+    if raw_pwm_prescaler(timer_number, control_b) != Some(prescaler) {
+        return Err(ProtocolError::PwmControlPrescalerMismatch {
+            declared: prescaler,
+        });
+    }
+
+    Ok(ProtocolEvent::PwmWrite {
+        sequence: packet.sequence,
+        board_timestamp_us: packet.board_timestamp_us,
+        pin,
+        duty_value,
+        resolution_bits,
+        output_mode,
+        timer_number,
+        timer_channel,
+        waveform_mode,
+        output_polarity,
+        timer_clock_hz,
+        prescaler,
+        top,
+        compare_value,
+        counter_value,
+        control_a,
+        control_b,
+    })
+}
+
+fn raw_pwm_mode_number(timer: u8, control_a: u8, control_b: u8) -> u8 {
+    if timer == 1 {
+        (control_a & 0x03) | (((control_b >> 3) & 0x03) << 2)
+    } else {
+        (control_a & 0x03) | ((control_b & 0x08) >> 1)
+    }
+}
+
+fn raw_pwm_waveform_mode(timer: u8, control_a: u8, control_b: u8) -> Option<PwmWaveformMode> {
+    let mode = raw_pwm_mode_number(timer, control_a, control_b);
+    if timer == 1 {
+        match mode {
+            5 | 6 | 7 | 14 | 15 => Some(PwmWaveformMode::FastPwm),
+            1 | 2 | 3 | 10 | 11 => Some(PwmWaveformMode::PhaseCorrectPwm),
+            8 | 9 => Some(PwmWaveformMode::PhaseAndFrequencyCorrectPwm),
+            _ => None,
+        }
+    } else {
+        match mode {
+            3 | 7 => Some(PwmWaveformMode::FastPwm),
+            1 | 5 => Some(PwmWaveformMode::PhaseCorrectPwm),
+            _ => None,
+        }
+    }
+}
+
+fn raw_pwm_output_polarity(control_a: u8, channel: PwmTimerChannel) -> Option<PwmOutputPolarity> {
+    let shift = match channel {
+        PwmTimerChannel::A => 6,
+        PwmTimerChannel::B => 4,
+    };
+    match (control_a >> shift) & 0x03 {
+        0 => Some(PwmOutputPolarity::Disconnected),
+        2 => Some(PwmOutputPolarity::NonInverting),
+        3 => Some(PwmOutputPolarity::Inverting),
+        _ => None,
+    }
+}
+
+fn raw_pwm_prescaler(timer: u8, control_b: u8) -> Option<u16> {
+    let clock_select = control_b & 0x07;
+    if timer == 2 {
+        match clock_select {
+            1 => Some(1),
+            2 => Some(8),
+            3 => Some(32),
+            4 => Some(64),
+            5 => Some(128),
+            6 => Some(256),
+            7 => Some(1024),
+            _ => None,
+        }
+    } else {
+        match clock_select {
+            1 => Some(1),
+            2 => Some(8),
+            3 => Some(64),
+            4 => Some(256),
+            5 => Some(1024),
+            _ => None,
+        }
+    }
+}
+
+fn expected_pwm_timer(pin: u8) -> (u8, PwmTimerChannel) {
+    match pin {
+        3 => (2, PwmTimerChannel::B),
+        5 => (0, PwmTimerChannel::B),
+        6 => (0, PwmTimerChannel::A),
+        9 => (1, PwmTimerChannel::A),
+        10 => (1, PwmTimerChannel::B),
+        11 => (2, PwmTimerChannel::A),
+        _ => unreachable!("pin is validated before timer mapping"),
+    }
+}
+
+pub fn derive_pwm_timing(
+    output_mode: PwmOutputMode,
+    waveform_mode: PwmWaveformMode,
+    output_polarity: PwmOutputPolarity,
+    timer_clock_hz: u32,
+    prescaler: u16,
+    top: u16,
+    compare_value: u16,
+) -> Option<PwmTiming> {
+    if output_mode != PwmOutputMode::HardwarePwm {
+        return None;
+    }
+
+    let period_ticks = match waveform_mode {
+        PwmWaveformMode::FastPwm => u64::from(top) + 1,
+        PwmWaveformMode::PhaseCorrectPwm | PwmWaveformMode::PhaseAndFrequencyCorrectPwm => {
+            u64::from(top) * 2
+        }
+    };
+    let non_inverting_high_ticks = match waveform_mode {
+        PwmWaveformMode::FastPwm => u64::from(compare_value),
+        PwmWaveformMode::PhaseCorrectPwm | PwmWaveformMode::PhaseAndFrequencyCorrectPwm => {
+            u64::from(compare_value) * 2
+        }
+    };
+    let high_ticks = match output_polarity {
+        PwmOutputPolarity::NonInverting => non_inverting_high_ticks,
+        PwmOutputPolarity::Inverting => period_ticks - non_inverting_high_ticks,
+        PwmOutputPolarity::Disconnected => return None,
+    };
+    let low_ticks = period_ticks - high_ticks;
+    let timer_denominator = u64::from(timer_clock_hz);
+    let tick_scale = u64::from(prescaler) * 1_000_000_000;
+    let period_ns = rounded_ratio(period_ticks * tick_scale, timer_denominator);
+    let high_time_ns = rounded_ratio(high_ticks * tick_scale, timer_denominator);
+    let low_time_ns = rounded_ratio(low_ticks * tick_scale, timer_denominator);
+    let frequency_millihz = rounded_ratio(
+        u64::from(timer_clock_hz) * 1_000,
+        u64::from(prescaler) * period_ticks,
+    );
+    let duty_ppm = rounded_ratio(high_ticks * 1_000_000, period_ticks) as u32;
+
+    Some(PwmTiming {
+        period_ns,
+        high_time_ns,
+        low_time_ns,
+        frequency_millihz,
+        duty_ppm,
+    })
+}
+
+fn rounded_ratio(numerator: u64, denominator: u64) -> u64 {
+    (numerator + denominator / 2) / denominator
 }
 
 fn require_payload_len(packet: &Packet, expected: usize) -> Result<(), ProtocolError> {

@@ -27,6 +27,15 @@ desktop-calculated voltage, reference metadata, percentage of full scale, and
 bounded trend graphs. These trends are intentionally not presented as
 oscilloscope-grade or calibrated measurements.
 
+## Milestone 3
+
+The third milestone adds checked `ASV.analogWrite(pin, duty)` instrumentation
+for the Uno's real hardware PWM pins: D3, D5, D6, D9, D10, and D11. The firmware
+captures the driving timer registers and the desktop reconstructs a rectangular
+configured waveform with period, frequency, HIGH/LOW time, duty, timer counter,
+compare value, and selectable time window. The trace is timer-derived rather
+than an electrical voltage measurement.
+
 ## Development
 
 See [docs/development-setup.md](docs/development-setup.md) for prerequisites and

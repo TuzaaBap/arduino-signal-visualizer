@@ -16,6 +16,52 @@ fn adc_packet(payload: Vec<u8>) -> Packet {
     }
 }
 
+fn pwm_packet(payload: Vec<u8>) -> Packet {
+    Packet {
+        packet_type: PacketType::PwmWrite,
+        sequence: 0x3456,
+        board_timestamp_us: 0x5566_7788,
+        payload,
+    }
+}
+
+fn d9_pwm_payload(duty: u16) -> Vec<u8> {
+    let output_mode = if duty == 0 {
+        0
+    } else if duty == 255 {
+        2
+    } else {
+        1
+    };
+    let polarity = if output_mode == 1 { 1 } else { 0 };
+    vec![
+        2,
+        9,
+        duty as u8,
+        (duty >> 8) as u8,
+        8,
+        output_mode,
+        1,
+        0,
+        2,
+        polarity,
+        0x00,
+        0x24,
+        0xf4,
+        0x00,
+        0x40,
+        0x00,
+        0xff,
+        0x00,
+        duty as u8,
+        (duty >> 8) as u8,
+        0x2a,
+        0x00,
+        if output_mode == 1 { 0x81 } else { 0x01 },
+        0x03,
+    ]
+}
+
 #[test]
 fn shared_gpio_vector_decodes_and_reencodes() {
     let vector = parse_hex(include_str!(
@@ -68,6 +114,59 @@ fn shared_adc_vector_decodes_and_reencodes() {
             reference_mv: 5_000,
         }
     );
+}
+
+#[test]
+fn shared_pwm_vector_decodes_and_reencodes() {
+    let vector = parse_hex(include_str!(
+        "../../../protocol/test-vectors/pwm-d9-half-duty.hex"
+    ));
+    let (delimiter, encoded) = vector.split_last().expect("vector is non-empty");
+    assert_eq!(*delimiter, 0);
+
+    let packet = decode_frame(encoded).expect("shared PWM vector decodes");
+    assert_eq!(packet.sequence, 0x3456);
+    assert_eq!(packet.board_timestamp_us, 0x5566_7788);
+    assert_eq!(packet.payload, d9_pwm_payload(128));
+    assert_eq!(encode_packet(&packet), vector);
+    assert_eq!(
+        decode_event(&packet).expect("typed PWM event decodes"),
+        ProtocolEvent::PwmWrite {
+            sequence: 0x3456,
+            board_timestamp_us: 0x5566_7788,
+            pin: 9,
+            duty_value: 128,
+            resolution_bits: 8,
+            output_mode: PwmOutputMode::HardwarePwm,
+            timer_number: 1,
+            timer_channel: PwmTimerChannel::A,
+            waveform_mode: PwmWaveformMode::PhaseCorrectPwm,
+            output_polarity: PwmOutputPolarity::NonInverting,
+            timer_clock_hz: 16_000_000,
+            prescaler: 64,
+            top: 255,
+            compare_value: 128,
+            counter_value: 42,
+            control_a: 0x81,
+            control_b: 0x03,
+        }
+    );
+
+    let timing = derive_pwm_timing(
+        PwmOutputMode::HardwarePwm,
+        PwmWaveformMode::PhaseCorrectPwm,
+        PwmOutputPolarity::NonInverting,
+        16_000_000,
+        64,
+        255,
+        128,
+    )
+    .expect("hardware PWM has periodic timing");
+    assert_eq!(timing.period_ns, 2_040_000);
+    assert_eq!(timing.high_time_ns, 1_024_000);
+    assert_eq!(timing.low_time_ns, 1_016_000);
+    assert_eq!(timing.frequency_millihz, 490_196);
+    assert_eq!(timing.duty_ppm, 501_961);
 }
 
 #[test]
@@ -281,5 +380,308 @@ fn adc_sequence_gap_is_reported() {
     assert_eq!(
         tracker.observe(&later),
         SequenceObservation::Missing { count: 2 }
+    );
+}
+
+#[test]
+fn pwm_payload_length_is_exact() {
+    let mut payload = d9_pwm_payload(128);
+    payload.pop();
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::InvalidTypedPayloadLength {
+            packet_type: PacketType::PwmWrite,
+            expected: 24,
+            actual: 23,
+        })
+    );
+}
+
+#[test]
+fn unsupported_pwm_event_version_is_rejected() {
+    let mut payload = d9_pwm_payload(128);
+    payload[0] = 3;
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::UnsupportedPwmEventVersion(3))
+    );
+}
+
+#[test]
+fn non_pwm_uno_pin_is_rejected() {
+    let mut payload = d9_pwm_payload(128);
+    payload[1] = 8;
+    let packet = pwm_packet(payload);
+    assert_eq!(decode_event(&packet), Err(ProtocolError::InvalidPwmPin(8)));
+}
+
+#[test]
+fn unsupported_pwm_resolution_is_rejected() {
+    let mut payload = d9_pwm_payload(128);
+    payload[4] = 10;
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::UnsupportedPwmResolution(10))
+    );
+}
+
+#[test]
+fn pwm_duty_must_fit_declared_resolution() {
+    let mut payload = d9_pwm_payload(128);
+    payload[2..4].copy_from_slice(&256_u16.to_le_bytes());
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::PwmDutyOutOfRange {
+            duty: 256,
+            maximum: 255,
+            resolution_bits: 8,
+        })
+    );
+}
+
+#[test]
+fn pwm_output_mode_must_match_endpoint_behavior() {
+    let mut payload = d9_pwm_payload(0);
+    payload[5] = 1;
+    payload[9] = 1;
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::InvalidPwmModeForDuty {
+            duty: 0,
+            expected: PwmOutputMode::ConstantLow,
+            actual: PwmOutputMode::HardwarePwm,
+        })
+    );
+}
+
+#[test]
+fn invalid_pwm_output_mode_is_rejected() {
+    let mut payload = d9_pwm_payload(128);
+    payload[5] = 3;
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::InvalidPwmOutputMode(3))
+    );
+}
+
+#[test]
+fn pwm_timer_must_match_pin() {
+    let mut payload = d9_pwm_payload(128);
+    payload[6] = 0;
+    let packet = pwm_packet(payload);
+    assert_eq!(
+        decode_event(&packet),
+        Err(ProtocolError::InvalidPwmTimer {
+            pin: 9,
+            expected: 1,
+            actual: 0,
+        })
+    );
+}
+
+#[test]
+fn pwm_timer_channel_must_match_pin() {
+    let mut payload = d9_pwm_payload(128);
+    payload[7] = 1;
+    assert_eq!(
+        decode_event(&pwm_packet(payload)),
+        Err(ProtocolError::InvalidPwmTimerChannel {
+            pin: 9,
+            expected: PwmTimerChannel::A,
+            actual: PwmTimerChannel::B,
+        })
+    );
+}
+
+#[test]
+fn invalid_pwm_waveform_mode_is_rejected() {
+    let mut payload = d9_pwm_payload(128);
+    payload[8] = 9;
+    assert_eq!(
+        decode_event(&pwm_packet(payload)),
+        Err(ProtocolError::InvalidPwmWaveformMode(9))
+    );
+}
+
+#[test]
+fn hardware_pwm_requires_connected_output_polarity() {
+    let mut payload = d9_pwm_payload(128);
+    payload[9] = 0;
+    assert_eq!(
+        decode_event(&pwm_packet(payload)),
+        Err(ProtocolError::InvalidPwmPolarityForOutputMode {
+            output_mode: PwmOutputMode::HardwarePwm,
+            actual: PwmOutputPolarity::Disconnected,
+        })
+    );
+}
+
+#[test]
+fn uno_pwm_clock_and_prescaler_are_validated() {
+    let mut bad_clock = d9_pwm_payload(128);
+    bad_clock[10..14].copy_from_slice(&8_000_000_u32.to_le_bytes());
+    assert_eq!(
+        decode_event(&pwm_packet(bad_clock)),
+        Err(ProtocolError::InvalidPwmTimerClock(8_000_000))
+    );
+
+    let mut bad_prescaler = d9_pwm_payload(128);
+    bad_prescaler[14..16].copy_from_slice(&7_u16.to_le_bytes());
+    assert_eq!(
+        decode_event(&pwm_packet(bad_prescaler)),
+        Err(ProtocolError::InvalidPwmPrescaler {
+            timer: 1,
+            prescaler: 7,
+        })
+    );
+}
+
+#[test]
+fn pwm_timer_values_must_be_possible() {
+    let mut zero_top = d9_pwm_payload(128);
+    zero_top[16..18].copy_from_slice(&0_u16.to_le_bytes());
+    assert_eq!(
+        decode_event(&pwm_packet(zero_top)),
+        Err(ProtocolError::InvalidPwmTop { timer: 1, top: 0 })
+    );
+
+    let mut compare_above_top = d9_pwm_payload(128);
+    compare_above_top[16..18].copy_from_slice(&100_u16.to_le_bytes());
+    assert_eq!(
+        decode_event(&pwm_packet(compare_above_top)),
+        Err(ProtocolError::InvalidPwmCompare {
+            compare_value: 128,
+            top: 100,
+        })
+    );
+
+    let mut counter_above_top = d9_pwm_payload(128);
+    counter_above_top[20..22].copy_from_slice(&256_u16.to_le_bytes());
+    assert_eq!(
+        decode_event(&pwm_packet(counter_above_top)),
+        Err(ProtocolError::InvalidPwmCounter {
+            counter_value: 256,
+            top: 255,
+        })
+    );
+}
+
+#[test]
+fn normalized_pwm_fields_must_match_raw_timer_controls() {
+    let mut waveform_mismatch = d9_pwm_payload(128);
+    waveform_mismatch[22] = 0x80;
+    assert_eq!(
+        decode_event(&pwm_packet(waveform_mismatch)),
+        Err(ProtocolError::PwmControlWaveformMismatch {
+            declared: PwmWaveformMode::PhaseCorrectPwm,
+            raw_mode: 0,
+        })
+    );
+
+    let mut polarity_mismatch = d9_pwm_payload(128);
+    polarity_mismatch[22] = 0xc1;
+    assert_eq!(
+        decode_event(&pwm_packet(polarity_mismatch)),
+        Err(ProtocolError::PwmControlPolarityMismatch {
+            declared: PwmOutputPolarity::NonInverting,
+        })
+    );
+
+    let mut prescaler_mismatch = d9_pwm_payload(128);
+    prescaler_mismatch[23] = 0x02;
+    assert_eq!(
+        decode_event(&pwm_packet(prescaler_mismatch)),
+        Err(ProtocolError::PwmControlPrescalerMismatch { declared: 64 })
+    );
+}
+
+#[test]
+fn constant_pwm_endpoint_has_no_periodic_timing() {
+    let packet = pwm_packet(d9_pwm_payload(255));
+    assert_eq!(
+        decode_event(&packet).expect("constant-high endpoint decodes"),
+        ProtocolEvent::PwmWrite {
+            sequence: 0x3456,
+            board_timestamp_us: 0x5566_7788,
+            pin: 9,
+            duty_value: 255,
+            resolution_bits: 8,
+            output_mode: PwmOutputMode::ConstantHigh,
+            timer_number: 1,
+            timer_channel: PwmTimerChannel::A,
+            waveform_mode: PwmWaveformMode::PhaseCorrectPwm,
+            output_polarity: PwmOutputPolarity::Disconnected,
+            timer_clock_hz: 16_000_000,
+            prescaler: 64,
+            top: 255,
+            compare_value: 255,
+            counter_value: 42,
+            control_a: 0x01,
+            control_b: 0x03,
+        }
+    );
+    assert_eq!(
+        derive_pwm_timing(
+            PwmOutputMode::ConstantHigh,
+            PwmWaveformMode::PhaseCorrectPwm,
+            PwmOutputPolarity::Disconnected,
+            16_000_000,
+            64,
+            255,
+            255,
+        ),
+        None
+    );
+}
+
+#[test]
+fn fast_pwm_uses_top_plus_one_timer_ticks() {
+    let timing = derive_pwm_timing(
+        PwmOutputMode::HardwarePwm,
+        PwmWaveformMode::FastPwm,
+        PwmOutputPolarity::NonInverting,
+        16_000_000,
+        64,
+        255,
+        128,
+    )
+    .expect("fast PWM has periodic timing");
+    assert_eq!(timing.period_ns, 1_024_000);
+    assert_eq!(timing.high_time_ns, 512_000);
+    assert_eq!(timing.low_time_ns, 512_000);
+    assert_eq!(timing.frequency_millihz, 976_563);
+    assert_eq!(timing.duty_ppm, 500_000);
+}
+
+#[test]
+fn pwm_crc_corruption_is_rejected() {
+    let packet = pwm_packet(d9_pwm_payload(128));
+    let framed = encode_packet(&packet);
+    let mut decoded = cobs::decode(&framed[..framed.len() - 1]).expect("valid COBS");
+    decoded[HEADER_LEN + 2] ^= 0x01;
+
+    assert!(matches!(
+        decode_frame(&cobs::encode(&decoded)),
+        Err(ProtocolError::CrcMismatch { .. })
+    ));
+}
+
+#[test]
+fn pwm_sequence_gap_is_reported() {
+    let mut tracker = SequenceTracker::default();
+    let first = pwm_packet(d9_pwm_payload(128));
+    let mut later = first.clone();
+    later.sequence = first.sequence.wrapping_add(4);
+
+    assert_eq!(tracker.observe(&first), SequenceObservation::First);
+    assert_eq!(
+        tracker.observe(&later),
+        SequenceObservation::Missing { count: 3 }
     );
 }

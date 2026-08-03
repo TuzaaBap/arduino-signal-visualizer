@@ -58,6 +58,47 @@ export interface AdcBatch {
   coalescedUiSamples: number;
 }
 
+export type PwmOutputMode = "constantLow" | "hardwarePwm" | "constantHigh";
+export type PwmTimerChannel = "a" | "b";
+export type PwmWaveformMode =
+  | "fastPwm"
+  | "phaseCorrectPwm"
+  | "phaseAndFrequencyCorrectPwm";
+export type PwmOutputPolarity =
+  | "disconnected"
+  | "nonInverting"
+  | "inverting";
+
+export interface PwmUpdate {
+  sequence: number;
+  boardTimestampUs: number;
+  pin: number;
+  dutyValue: number;
+  resolutionBits: number;
+  outputMode: PwmOutputMode;
+  timerNumber: number;
+  timerChannel: PwmTimerChannel;
+  waveformMode: PwmWaveformMode;
+  outputPolarity: PwmOutputPolarity;
+  timerClockHz: number;
+  prescaler: number;
+  top: number;
+  compareValue: number;
+  counterValue: number;
+  controlA: number;
+  controlB: number;
+  periodNs: number | null;
+  highTimeNs: number | null;
+  lowTimeNs: number | null;
+  frequencyMillihz: number | null;
+  dutyPpm: number;
+}
+
+export interface PwmBatch {
+  updates: PwmUpdate[];
+  coalescedUiUpdates: number;
+}
+
 export interface BoardDescriptor {
   boardType: "arduinoUnoR3";
   firmwareVersion: {

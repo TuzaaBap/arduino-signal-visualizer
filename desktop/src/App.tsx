@@ -5,12 +5,15 @@ import { Diagnostics } from "./components/Diagnostics";
 import { AnalogInspector } from "./components/AnalogInspector";
 import { AnalogPanel } from "./components/AnalogPanel";
 import { PinInspector } from "./components/PinInspector";
+import { PwmInspector } from "./components/PwmInspector";
+import { PwmPanel } from "./components/PwmPanel";
 import { UnoBoard } from "./components/UnoBoard";
 import {
   applyAdcSamples,
   type AnalogState,
 } from "./domain/analog-store";
 import { applyGpioUpdates, type GpioState } from "./domain/gpio-store";
+import { applyPwmUpdates, type PwmState } from "./domain/pwm-store";
 import type {
   AdcBatch,
   BoardDescriptor,
@@ -18,6 +21,7 @@ import type {
   DiagnosticEntry,
   GpioBatch,
   ProtocolDiagnostic,
+  PwmBatch,
   SerialPortDescriptor,
 } from "./domain/types";
 import { useFramesPerSecond } from "./hooks/use-performance-metrics";
@@ -25,6 +29,7 @@ import {
   backendAvailable,
   acknowledgeValidationAdc,
   acknowledgeValidationGpio,
+  acknowledgeValidationPwm,
   connectSerial,
   disconnect,
   listSerialPorts,
@@ -48,9 +53,13 @@ export function App() {
   const [board, setBoard] = useState<BoardDescriptor | null>(null);
   const [pins, setPins] = useState<GpioState>({});
   const [analog, setAnalog] = useState<AnalogState>({});
+  const [pwm, setPwm] = useState<PwmState>({});
   const [selectedPin, setSelectedPin] = useState(13);
   const [selectedAnalogChannel, setSelectedAnalogChannel] = useState(0);
-  const [activeTab, setActiveTab] = useState<"digital" | "analog">("digital");
+  const [selectedPwmPin, setSelectedPwmPin] = useState(9);
+  const [activeTab, setActiveTab] = useState<"digital" | "analog" | "pwm">(
+    "digital",
+  );
   const [diagnostics, setDiagnostics] = useState<DiagnosticEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [packetRate, setPacketRate] = useState(0);
@@ -83,6 +92,11 @@ export function App() {
     setAnalog((current) => applyAdcSamples(current, batch.samples));
   }, []);
 
+  const acceptPwmBatch = useCallback((batch: PwmBatch) => {
+    packetCounter.current += batch.updates.length;
+    setPwm((current) => applyPwmUpdates(current, batch.updates));
+  }, []);
+
   useEffect(() => {
     if (!backendReady) {
       return;
@@ -95,6 +109,7 @@ export function App() {
         if (nextStatus.phase === "waitingForHello") {
           setPins({});
           setAnalog({});
+          setPwm({});
           setBoard(null);
           setDiagnostics([]);
         }
@@ -102,6 +117,7 @@ export function App() {
       onBoardInfo: setBoard,
       onGpioBatch: acceptBatch,
       onAdcBatch: acceptAdcBatch,
+      onPwmBatch: acceptPwmBatch,
       onDiagnostic: appendDiagnostic,
     })
       .then((removeListeners) => {
@@ -121,7 +137,13 @@ export function App() {
       });
 
     return () => cleanup?.();
-  }, [acceptAdcBatch, acceptBatch, appendDiagnostic, backendReady]);
+  }, [
+    acceptAdcBatch,
+    acceptBatch,
+    acceptPwmBatch,
+    appendDiagnostic,
+    backendReady,
+  ]);
 
   useEffect(() => {
     if (!validationActive) {
@@ -146,6 +168,20 @@ export function App() {
       void acknowledgeValidationAdc(channels);
     }
   }, [analog, validationActive]);
+
+  useEffect(() => {
+    if (!validationActive) {
+      return;
+    }
+    const pins = Object.entries(pwm).map(([pin, state]) => ({
+      pin: Number(pin),
+      bufferLength: state.history.length,
+      latest: state.latest,
+    }));
+    if (pins.length > 0) {
+      void acknowledgeValidationPwm(pins);
+    }
+  }, [pwm, validationActive]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -209,6 +245,7 @@ export function App() {
     () => Object.keys(analog).length,
     [analog],
   );
+  const observedPwmCount = useMemo(() => Object.keys(pwm).length, [pwm]);
   const firmware = board
     ? `${board.firmwareVersion.major}.${board.firmwareVersion.minor}.${board.firmwareVersion.patch}`
     : "—";
@@ -222,7 +259,7 @@ export function App() {
           </span>
           <div>
             <h1>Arduino Signal Visualizer</h1>
-            <p>GPIO and ADC instrumentation workspace</p>
+            <p>GPIO, ADC, and PWM instrumentation workspace</p>
           </div>
         </div>
         <div className={`header-status header-status--${status.phase}`}>
@@ -253,10 +290,10 @@ export function App() {
           <section className="telemetry" aria-label="Application telemetry">
             <p className="eyebrow">Live telemetry</p>
             <div className="telemetry-grid">
-              <Metric label="Board" value="Uno R3" />
+              <Metric label="Board" value="Arduino Uno" />
               <Metric label="Firmware" value={firmware} />
               <Metric label="Port" value={status.portName ?? "—"} />
-              <Metric label="App" value="0.2.0" />
+              <Metric label="App" value="0.3.0" />
               <Metric label="Render" value={`${fps} FPS`} />
               <Metric label="Packets" value={`${packetRate}/s`} />
             </div>
@@ -272,7 +309,7 @@ export function App() {
           <div className="board-workspace-heading">
             <div>
               <p className="eyebrow">Interactive board</p>
-              <h2 id="board-heading">Arduino Uno R3</h2>
+              <h2 id="board-heading">Arduino Uno</h2>
             </div>
             <div className="workspace-tabs" role="tablist" aria-label="Signal type">
               <button
@@ -293,6 +330,15 @@ export function App() {
               >
                 Analog
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "pwm"}
+                className={activeTab === "pwm" ? "active" : ""}
+                onClick={() => setActiveTab("pwm")}
+              >
+                PWM
+              </button>
             </div>
           </div>
           <div className="board-content">
@@ -301,16 +347,22 @@ export function App() {
                 <span>
                   {activeTab === "digital"
                     ? connectedPinCount
-                    : observedAnalogCount}
+                    : activeTab === "analog"
+                      ? observedAnalogCount
+                      : observedPwmCount}
                 </span>
                 {activeTab === "digital"
                   ? "of 14 digital pins observed"
-                  : "of 6 analog channels observed"}
+                  : activeTab === "analog"
+                    ? "of 6 analog channels observed"
+                    : "of 6 hardware PWM pins observed"}
               </div>
               <UnoBoard
                 pins={pins}
+                pwm={pwm}
                 selectedDigitalPin={selectedPin}
                 selectedAnalogChannel={selectedAnalogChannel}
+                selectedPwmPin={selectedPwmPin}
                 activeTab={activeTab}
                 onSelectDigitalPin={(pin) => {
                   setSelectedPin(pin);
@@ -320,6 +372,10 @@ export function App() {
                   setSelectedAnalogChannel(channel);
                   setActiveTab("analog");
                 }}
+                onSelectPwmPin={(pin) => {
+                  setSelectedPwmPin(pin);
+                  setActiveTab("pwm");
+                }}
               />
             </div>
             {activeTab === "analog" && (
@@ -328,6 +384,14 @@ export function App() {
                 selectedChannel={selectedAnalogChannel}
                 mockMode={status.mode === "mock"}
                 onSelectChannel={setSelectedAnalogChannel}
+              />
+            )}
+            {activeTab === "pwm" && (
+              <PwmPanel
+                pins={pwm}
+                selectedPin={selectedPwmPin}
+                mockMode={status.mode === "mock"}
+                onSelectPin={setSelectedPwmPin}
               />
             )}
           </div>
@@ -349,11 +413,13 @@ export function App() {
             state={pins[selectedPin]}
             nominalLogicMv={board?.nominalLogicMv ?? 5_000}
           />
-        ) : (
+        ) : activeTab === "analog" ? (
           <AnalogInspector
             channel={selectedAnalogChannel}
             state={analog[selectedAnalogChannel]}
           />
+        ) : (
+          <PwmInspector pin={selectedPwmPin} state={pwm[selectedPwmPin]} />
         )}
       </main>
     </div>

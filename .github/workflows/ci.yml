@@ -71,6 +71,13 @@ jobs:
           --library firmware/ArduinoSignalVisualizer
           --warnings all
           firmware/examples/AdcDemo
+      - name: Compile PWM example
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/examples/PwmDemo
       - name: Compile native protocol test
         run: >-
           g++ -std=c++11 -Wall -Wextra -Werror
@@ -82,3 +89,4 @@ jobs:
           /tmp/asv-protocol-test
           protocol/test-vectors/digital-write-d13-high.hex
           protocol/test-vectors/analog-a0-midscale.hex
+          protocol/test-vectors/pwm-d9-half-duty.hex

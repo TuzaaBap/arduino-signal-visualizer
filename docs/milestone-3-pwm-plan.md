@@ -1,27 +1,28 @@
-# Proposed Milestone 3 plan: PWM
+# Milestone 3 plan: timer-derived PWM visualization
 
-This is a design proposal only. PWM implementation requires explicit approval.
+This revision was approved on 2026-08-03. It replaces the original rounded
+frequency and requested-duty-history design.
 
 ## Recommended architecture
 
-Add `ASV.analogWrite(pin, value)` as another thin Arduino wrapper: call the real
-Arduino function first, preserve its normal behavior, then report the requested
-output state. Keep PWM events independent from GPIO and ADC events so adding PWM
-cannot destabilize either validated path.
+Keep `ASV.analogWrite(pin, value)` as a thin Arduino wrapper: validate the real
+Uno PWM pin and count, call Arduino, then snapshot the driving timer registers.
+Keep PWM events independent from GPIO and ADC events so the revision cannot
+destabilize either validated path.
 
-The canonical value should be the integer duty count and declared resolution,
-not a floating-point percentage. Desktop code can calculate percentage from
-those fields. Timer and carrier-frequency metadata must be explicit integer
-units and must be labelled nominal unless independently measured.
+The canonical values are integer timer configuration and requested duty, not a
+floating-point percentage or rounded nominal frequency. Rust calculates exact
+configured timing for the reported register state. The UI must label it as
+configured rather than electrically measured.
 
 ## Proposed tasks
 
 1. **Contract and hardware semantics**
    - Decide whether non-PWM Uno pins are rejected or explicitly represented as
      Arduino's digital fallback behavior.
-   - Define versioned `PwmWrite` fields: pin, duty count, resolution bits,
-     output mode, nominal carrier frequency in integer hertz, sequence, and
-     board timestamp.
+   - Define versioned `PwmWrite` fields: pin, duty count, resolution, output
+     mode, timer/channel, waveform mode, polarity, source clock, prescaler,
+     TOP, compare, counter, raw control registers, sequence, and timestamp.
    - Add malformed, unsupported-pin, duty-range, CRC, sequence, and shared
      Rust/C++ vector tests.
 
@@ -33,15 +34,17 @@ units and must be labelled nominal unless independently measured.
 
 3. **Rust backend**
    - Decode PWM packets into typed board-independent events.
-   - Validate pin capability, duty range, resolution, and frequency metadata.
+   - Validate pin capability, duty range, resolution, timer/channel mapping,
+     waveform mode, polarity, clock, prescaler, TOP, compare, and counter.
+   - Derive period, frequency, HIGH time, LOW time, and duty with integer units.
    - Preserve all valid events before bounded UI coalescing.
 
 4. **Frontend**
    - Add a PWM tab and make PWM-capable Uno pins selectable.
-   - Show raw duty, calculated percentage, nominal frequency, and a bounded
-     state history.
-   - Clearly distinguish requested duty from electrically measured waveform
-     behavior.
+   - Show a rectangular configured waveform, exact timer-derived timing,
+     timer counter and compare values, and selectable time window.
+   - Never connect duty-history points into a false analog-looking waveform.
+   - Clearly distinguish configured timing from electrically measured behavior.
 
 5. **Hardware validation**
    - Test 0%, approximately 25%, 50%, 75%, and 100% duty on representatives of

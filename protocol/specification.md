@@ -62,7 +62,8 @@ Sent once from `ASV.begin()` after the USB serial connection is ready.
 | 7 | 2 | Nominal logic supply in millivolts |
 
 Capability bit 0 represents digital GPIO instrumentation. Capability bit 1
-represents instrumented ADC sampling.
+represents instrumented ADC sampling. Capability bit 2 represents instrumented
+hardware PWM writes.
 
 Reset causes are `0` unknown, `1` power-on, `2` external, `3` brown-out,
 `4` watchdog, and `5` software.
@@ -116,6 +117,67 @@ voltage_mV = raw_count * reference_mV / full_scale_count
 
 The displayed value is an estimate based on the declared reference, not a
 calibrated or oscilloscope-grade measurement.
+
+### `0x12` PWM write
+
+PWM write payload schema version 2:
+
+| Payload offset | Size | Field |
+| --- | ---: | --- |
+| 0 | 1 | PWM event schema version (`2`) |
+| 1 | 1 | Arduino digital pin |
+| 2 | 2 | Requested duty count |
+| 4 | 1 | Duty resolution in bits |
+| 5 | 1 | Output mode |
+| 6 | 1 | Timer number |
+| 7 | 1 | Timer channel (`0` A, `1` B) |
+| 8 | 1 | Waveform mode |
+| 9 | 1 | Output polarity |
+| 10 | 4 | Timer source clock in hertz |
+| 14 | 2 | Timer prescaler |
+| 16 | 2 | Timer TOP value |
+| 18 | 2 | Output compare register value |
+| 20 | 2 | Timer counter snapshot |
+| 22 | 1 | Raw timer control register A |
+| 23 | 1 | Raw timer control register B |
+
+For the Uno profile, only hardware PWM pins D3, D5, D6, D9, D10, and D11 are
+accepted, and the declared resolution must be 8 bits. Duty counts therefore
+range from 0 through 255.
+
+Output modes are `0` constant low, `1` hardware PWM, and `2` constant high.
+Duty 0 must use constant low, duty 255 must use constant high, and duty 1
+through 254 must use hardware PWM. Output polarity is `0` disconnected, `1`
+non-inverting, or `2` inverting. Constant endpoints require a disconnected
+timer output; hardware PWM requires a connected polarity.
+
+Waveform modes are `1` Fast PWM, `2` phase-correct PWM, and `3` phase-and-
+frequency-correct PWM. Rust validates timer/pin/channel mapping, clock,
+prescaler, TOP, compare, counter, polarity, CRC, and sequence before deriving
+the configured waveform.
+
+For Fast PWM:
+
+```text
+period_ticks = TOP + 1
+non_inverting_high_ticks = compare
+```
+
+For dual-slope phase-correct modes:
+
+```text
+period_ticks = 2 * TOP
+non_inverting_high_ticks = 2 * compare
+```
+
+The desktop derives frequency, period, HIGH time, LOW time, and duty using the
+reported timer source clock and prescaler. Integer wire and backend units avoid
+AVR floating-point calculations. The rendered square wave is the configured
+MCU timer waveform, not an electrical voltage capture; oscillator tolerance,
+loading, noise, and edge shape still require measurement hardware.
+
+ASV does not report non-PWM pins as PWM and does not model Arduino's digital
+fallback behavior on those pins.
 
 ## Receiver fault handling
 

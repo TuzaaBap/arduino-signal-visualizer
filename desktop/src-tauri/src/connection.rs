@@ -12,14 +12,15 @@ use std::{
 
 use asv_protocol::{
     BoardDescriptor, GpioDirection, GpioLevel, GpioObservationSource, Packet, PacketType,
-    ProtocolEvent, SequenceObservation, SequenceTracker, StreamDecoder,
+    ProtocolEvent, PwmOutputMode, PwmOutputPolarity, PwmTimerChannel, PwmWaveformMode,
+    SequenceObservation, SequenceTracker, StreamDecoder, derive_pwm_timing,
 };
 use serialport::{SerialPort, SerialPortType};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::model::{
     AdcBatch, AdcSample, ConnectionMode, ConnectionPhase, ConnectionStatus, DiagnosticCategory,
-    GpioBatch, GpioUpdate, ProtocolDiagnostic, SerialPortDescriptor,
+    GpioBatch, GpioUpdate, ProtocolDiagnostic, PwmBatch, PwmUpdate, SerialPortDescriptor,
 };
 use crate::validation;
 
@@ -27,6 +28,7 @@ const EVENT_CONNECTION_STATUS: &str = "asv://connection-status";
 const EVENT_BOARD_INFO: &str = "asv://board-info";
 const EVENT_GPIO_BATCH: &str = "asv://gpio-batch";
 const EVENT_ADC_BATCH: &str = "asv://adc-batch";
+const EVENT_PWM_BATCH: &str = "asv://pwm-batch";
 const EVENT_DIAGNOSTIC: &str = "asv://protocol-diagnostic";
 const UI_QUEUE_CAPACITY: usize = 256;
 const UI_FLUSH_INTERVAL: Duration = Duration::from_millis(33);
@@ -304,10 +306,10 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
             board_type: asv_protocol::BoardType::ArduinoUnoR3,
             firmware_version: asv_protocol::FirmwareVersion {
                 major: 0,
-                minor: 2,
+                minor: 3,
                 patch: 0,
             },
-            capabilities: 3,
+            capabilities: 7,
             reset_cause: asv_protocol::ResetCause::Software,
             nominal_logic_mv: 5_000,
         };
@@ -334,6 +336,14 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
                 &sender,
                 &producer_stop,
                 SourceMessage::Event(mock_adc_event(tick, sequence)),
+            ) {
+                break;
+            }
+            sequence = sequence.wrapping_add(1);
+            if !send_preserved_event(
+                &sender,
+                &producer_stop,
+                SourceMessage::Event(mock_pwm_event(tick, sequence)),
             ) {
                 break;
             }
@@ -394,6 +404,86 @@ fn mock_adc_event(tick: u32, sequence: u16) -> ProtocolEvent {
     }
 }
 
+fn mock_pwm_event(tick: u32, sequence: u16) -> ProtocolEvent {
+    const PINS: [u8; 6] = [3, 5, 6, 9, 10, 11];
+    const DUTIES: [u16; 5] = [0, 64, 128, 191, 255];
+    let pin = PINS[(tick as usize) % PINS.len()];
+    let duty_value = DUTIES[((tick / PINS.len() as u32) as usize) % DUTIES.len()];
+    let output_mode = if duty_value == 0 {
+        PwmOutputMode::ConstantLow
+    } else if duty_value == 255 {
+        PwmOutputMode::ConstantHigh
+    } else {
+        PwmOutputMode::HardwarePwm
+    };
+    let (timer_number, timer_channel, waveform_mode, base_control_a, control_b) = match pin {
+        3 => (
+            2,
+            PwmTimerChannel::B,
+            PwmWaveformMode::PhaseCorrectPwm,
+            0x01,
+            0x04,
+        ),
+        5 => (0, PwmTimerChannel::B, PwmWaveformMode::FastPwm, 0x03, 0x03),
+        6 => (0, PwmTimerChannel::A, PwmWaveformMode::FastPwm, 0x03, 0x03),
+        9 => (
+            1,
+            PwmTimerChannel::A,
+            PwmWaveformMode::PhaseCorrectPwm,
+            0x01,
+            0x03,
+        ),
+        10 => (
+            1,
+            PwmTimerChannel::B,
+            PwmWaveformMode::PhaseCorrectPwm,
+            0x01,
+            0x03,
+        ),
+        11 => (
+            2,
+            PwmTimerChannel::A,
+            PwmWaveformMode::PhaseCorrectPwm,
+            0x01,
+            0x04,
+        ),
+        _ => unreachable!("mock pin comes from the Uno PWM pin table"),
+    };
+    let output_polarity = if output_mode == PwmOutputMode::HardwarePwm {
+        PwmOutputPolarity::NonInverting
+    } else {
+        PwmOutputPolarity::Disconnected
+    };
+    let compare_output_mask = match timer_channel {
+        PwmTimerChannel::A => 0x80,
+        PwmTimerChannel::B => 0x20,
+    };
+    ProtocolEvent::PwmWrite {
+        sequence,
+        board_timestamp_us: tick * 125_000,
+        pin,
+        duty_value,
+        resolution_bits: 8,
+        output_mode,
+        timer_number,
+        timer_channel,
+        waveform_mode,
+        output_polarity,
+        timer_clock_hz: 16_000_000,
+        prescaler: 64,
+        top: 255,
+        compare_value: duty_value,
+        counter_value: (tick % 256) as u16,
+        control_a: base_control_a
+            | if output_mode == PwmOutputMode::HardwarePwm {
+                compare_output_mask
+            } else {
+                0
+            },
+        control_b,
+    }
+}
+
 fn handle_packet(
     sender: &SyncSender<SourceMessage>,
     dropped: &AtomicU64,
@@ -432,7 +522,7 @@ fn handle_packet(
     }
 
     match asv_protocol::decode_event(&packet) {
-        Ok(event @ ProtocolEvent::AnalogSample { .. }) => {
+        Ok(event @ (ProtocolEvent::AnalogSample { .. } | ProtocolEvent::PwmWrite { .. })) => {
             let _ = send_preserved_event(sender, stop, SourceMessage::Event(event));
         }
         Ok(event) => try_send(sender, dropped, SourceMessage::Event(event)),
@@ -492,6 +582,8 @@ fn deliver_events(
     let mut latest_gpio = BTreeMap::<u8, GpioUpdate>::new();
     let mut pending_adc = BTreeMap::<u8, VecDeque<AdcSample>>::new();
     let mut coalesced_adc_ui_samples = 0_u64;
+    let mut latest_pwm = BTreeMap::<u8, PwmUpdate>::new();
+    let mut coalesced_pwm_ui_updates = 0_u64;
     let mut next_flush = Instant::now() + UI_FLUSH_INTERVAL;
 
     while !stop.load(Ordering::Relaxed) {
@@ -560,6 +652,69 @@ fn deliver_events(
                     }
                     channel_buffer.push_back(sample);
                 }
+                Ok(SourceMessage::Event(ProtocolEvent::PwmWrite {
+                    sequence,
+                    board_timestamp_us,
+                    pin,
+                    duty_value,
+                    resolution_bits,
+                    output_mode,
+                    timer_number,
+                    timer_channel,
+                    waveform_mode,
+                    output_polarity,
+                    timer_clock_hz,
+                    prescaler,
+                    top,
+                    compare_value,
+                    counter_value,
+                    control_a,
+                    control_b,
+                })) => {
+                    let timing = derive_pwm_timing(
+                        output_mode,
+                        waveform_mode,
+                        output_polarity,
+                        timer_clock_hz,
+                        prescaler,
+                        top,
+                        compare_value,
+                    );
+                    let update = PwmUpdate {
+                        sequence,
+                        board_timestamp_us,
+                        pin,
+                        duty_value,
+                        resolution_bits,
+                        output_mode,
+                        timer_number,
+                        timer_channel,
+                        waveform_mode,
+                        output_polarity,
+                        timer_clock_hz,
+                        prescaler,
+                        top,
+                        compare_value,
+                        counter_value,
+                        control_a,
+                        control_b,
+                        period_ns: timing.map(|value| value.period_ns),
+                        high_time_ns: timing.map(|value| value.high_time_ns),
+                        low_time_ns: timing.map(|value| value.low_time_ns),
+                        frequency_millihz: timing.map(|value| value.frequency_millihz),
+                        duty_ppm: timing.map(|value| value.duty_ppm).unwrap_or_else(|| {
+                            if output_mode == PwmOutputMode::ConstantHigh {
+                                1_000_000
+                            } else {
+                                0
+                            }
+                        }),
+                    };
+                    validation::record_pwm_update(&app, update.clone());
+                    if latest_pwm.insert(pin, update).is_some() {
+                        coalesced_pwm_ui_updates += 1;
+                    }
+                }
                 Ok(SourceMessage::Diagnostic(diagnostic)) => {
                     emit_diagnostic(&app, diagnostic);
                 }
@@ -585,12 +740,14 @@ fn deliver_events(
         if Instant::now() >= next_flush {
             flush_gpio(&app, &mut latest_gpio, &dropped);
             flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
+            flush_pwm(&app, &mut latest_pwm, &mut coalesced_pwm_ui_updates);
             next_flush = Instant::now() + UI_FLUSH_INTERVAL;
         }
         thread::sleep(Duration::from_millis(4));
     }
     flush_gpio(&app, &mut latest_gpio, &dropped);
     flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
+    flush_pwm(&app, &mut latest_pwm, &mut coalesced_pwm_ui_updates);
 }
 
 fn flush_gpio(app: &AppHandle, latest_gpio: &mut BTreeMap<u8, GpioUpdate>, dropped: &AtomicU64) {
@@ -636,6 +793,22 @@ fn flush_adc(
         coalesced_ui_samples: std::mem::take(coalesced_adc_ui_samples),
     };
     let _ = app.emit(EVENT_ADC_BATCH, batch);
+}
+
+fn flush_pwm(
+    app: &AppHandle,
+    latest_pwm: &mut BTreeMap<u8, PwmUpdate>,
+    coalesced_pwm_ui_updates: &mut u64,
+) {
+    if latest_pwm.is_empty() && *coalesced_pwm_ui_updates == 0 {
+        return;
+    }
+
+    let batch = PwmBatch {
+        updates: std::mem::take(latest_pwm).into_values().collect(),
+        coalesced_ui_updates: std::mem::take(coalesced_pwm_ui_updates),
+    };
+    let _ = app.emit(EVENT_PWM_BATCH, batch);
 }
 
 fn emit_status(
@@ -723,6 +896,81 @@ mod tests {
             assert!(channel < 6);
             assert_eq!(resolution_bits, 10);
             assert!(raw_value <= 1_023);
+        }
+    }
+
+    #[test]
+    fn mock_pwm_source_uses_only_uno_hardware_pwm_pins() {
+        assert_eq!(
+            mock_pwm_event(0, 3),
+            ProtocolEvent::PwmWrite {
+                sequence: 3,
+                board_timestamp_us: 0,
+                pin: 3,
+                duty_value: 0,
+                resolution_bits: 8,
+                output_mode: PwmOutputMode::ConstantLow,
+                timer_number: 2,
+                timer_channel: PwmTimerChannel::B,
+                waveform_mode: PwmWaveformMode::PhaseCorrectPwm,
+                output_polarity: PwmOutputPolarity::Disconnected,
+                timer_clock_hz: 16_000_000,
+                prescaler: 64,
+                top: 255,
+                compare_value: 0,
+                counter_value: 0,
+                control_a: 0x01,
+                control_b: 0x04,
+            }
+        );
+        for tick in 0..1_000 {
+            let ProtocolEvent::PwmWrite {
+                pin,
+                duty_value,
+                resolution_bits,
+                output_mode,
+                timer_number,
+                timer_channel,
+                waveform_mode,
+                output_polarity,
+                timer_clock_hz,
+                prescaler,
+                top,
+                compare_value,
+                counter_value,
+                ..
+            } = mock_pwm_event(tick, tick as u16)
+            else {
+                panic!("mock source must emit PWM events");
+            };
+            assert!([3, 5, 6, 9, 10, 11].contains(&pin));
+            assert_eq!(resolution_bits, 8);
+            assert!(duty_value <= 255);
+            assert_eq!(timer_clock_hz, 16_000_000);
+            assert_eq!(prescaler, 64);
+            assert_eq!(top, 255);
+            assert_eq!(compare_value, duty_value);
+            assert!(counter_value <= top);
+            let (expected_timer, expected_channel, expected_waveform) = match pin {
+                3 => (2, PwmTimerChannel::B, PwmWaveformMode::PhaseCorrectPwm),
+                5 => (0, PwmTimerChannel::B, PwmWaveformMode::FastPwm),
+                6 => (0, PwmTimerChannel::A, PwmWaveformMode::FastPwm),
+                9 => (1, PwmTimerChannel::A, PwmWaveformMode::PhaseCorrectPwm),
+                10 => (1, PwmTimerChannel::B, PwmWaveformMode::PhaseCorrectPwm),
+                11 => (2, PwmTimerChannel::A, PwmWaveformMode::PhaseCorrectPwm),
+                _ => unreachable!(),
+            };
+            assert_eq!(timer_number, expected_timer);
+            assert_eq!(timer_channel, expected_channel);
+            assert_eq!(waveform_mode, expected_waveform);
+            match output_mode {
+                PwmOutputMode::ConstantLow | PwmOutputMode::ConstantHigh => {
+                    assert_eq!(output_polarity, PwmOutputPolarity::Disconnected)
+                }
+                PwmOutputMode::HardwarePwm => {
+                    assert_eq!(output_polarity, PwmOutputPolarity::NonInverting)
+                }
+            }
         }
     }
 }
