@@ -11,6 +11,7 @@ import type {
   ProtocolDiagnostic,
   PwmBatch,
   PwmUpdate,
+  SerialActivityBatch,
   SerialPortDescriptor,
 } from "../domain/types";
 
@@ -20,6 +21,7 @@ export interface BackendHandlers {
   onGpioBatch: (batch: GpioBatch) => void;
   onAdcBatch: (batch: AdcBatch) => void;
   onPwmBatch: (batch: PwmBatch) => void;
+  onSerialActivity: (batch: SerialActivityBatch) => void;
   onDiagnostic: (diagnostic: ProtocolDiagnostic) => void;
 }
 
@@ -45,6 +47,9 @@ export async function subscribeToBackend(
     ),
     listen<PwmBatch>("asv://pwm-batch", (event) =>
       handlers.onPwmBatch(event.payload),
+    ),
+    listen<SerialActivityBatch>("asv://serial-activity", (event) =>
+      handlers.onSerialActivity(event.payload),
     ),
     listen<ProtocolDiagnostic>("asv://protocol-diagnostic", (event) =>
       handlers.onDiagnostic(event.payload),

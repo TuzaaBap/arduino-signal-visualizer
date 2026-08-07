@@ -14,6 +14,12 @@ import {
 } from "./domain/analog-store";
 import { applyGpioUpdates, type GpioState } from "./domain/gpio-store";
 import { applyPwmUpdates, type PwmState } from "./domain/pwm-store";
+import {
+  INACTIVE_SERIAL_LEDS,
+  applySerialActivity,
+  serialLedVisibility,
+  type SerialLedDeadlines,
+} from "./domain/serial-led-state";
 import type {
   AdcBatch,
   BoardDescriptor,
@@ -22,6 +28,7 @@ import type {
   GpioBatch,
   ProtocolDiagnostic,
   PwmBatch,
+  SerialActivityBatch,
   SerialPortDescriptor,
 } from "./domain/types";
 import { useFramesPerSecond } from "./hooks/use-performance-metrics";
@@ -54,6 +61,9 @@ export function App() {
   const [pins, setPins] = useState<GpioState>({});
   const [analog, setAnalog] = useState<AnalogState>({});
   const [pwm, setPwm] = useState<PwmState>({});
+  const [serialLedDeadlines, setSerialLedDeadlines] =
+    useState<SerialLedDeadlines>(INACTIVE_SERIAL_LEDS);
+  const [serialLedClock, setSerialLedClock] = useState(0);
   const [selectedPin, setSelectedPin] = useState(13);
   const [selectedAnalogChannel, setSelectedAnalogChannel] = useState(0);
   const [selectedPwmPin, setSelectedPwmPin] = useState(9);
@@ -97,6 +107,14 @@ export function App() {
     setPwm((current) => applyPwmUpdates(current, batch.updates));
   }, []);
 
+  const acceptSerialActivity = useCallback((batch: SerialActivityBatch) => {
+    const observedAtMs = performance.now();
+    setSerialLedDeadlines((current) =>
+      applySerialActivity(current, batch, observedAtMs),
+    );
+    setSerialLedClock(observedAtMs);
+  }, []);
+
   useEffect(() => {
     if (!backendReady) {
       return;
@@ -106,6 +124,14 @@ export function App() {
     void subscribeToBackend({
       onConnectionStatus: (nextStatus) => {
         setStatus(nextStatus);
+        if (
+          nextStatus.phase === "waitingForHello" ||
+          nextStatus.phase === "disconnected" ||
+          nextStatus.phase === "error"
+        ) {
+          setSerialLedDeadlines(INACTIVE_SERIAL_LEDS);
+          setSerialLedClock(performance.now());
+        }
         if (nextStatus.phase === "waitingForHello") {
           setPins({});
           setAnalog({});
@@ -118,6 +144,7 @@ export function App() {
       onGpioBatch: acceptBatch,
       onAdcBatch: acceptAdcBatch,
       onPwmBatch: acceptPwmBatch,
+      onSerialActivity: acceptSerialActivity,
       onDiagnostic: appendDiagnostic,
     })
       .then((removeListeners) => {
@@ -141,9 +168,29 @@ export function App() {
     acceptAdcBatch,
     acceptBatch,
     acceptPwmBatch,
+    acceptSerialActivity,
     appendDiagnostic,
     backendReady,
   ]);
+
+  useEffect(() => {
+    const nowMs = performance.now();
+    const nextDeadline = [
+      serialLedDeadlines.txActiveUntilMs,
+      serialLedDeadlines.rxActiveUntilMs,
+    ]
+      .filter((deadline) => deadline > nowMs)
+      .sort((left, right) => left - right)[0];
+    if (nextDeadline === undefined) {
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setSerialLedClock(performance.now()),
+      Math.max(1, nextDeadline - nowMs),
+    );
+    return () => window.clearTimeout(timer);
+  }, [serialLedClock, serialLedDeadlines]);
 
   useEffect(() => {
     if (!validationActive) {
@@ -246,6 +293,10 @@ export function App() {
     [analog],
   );
   const observedPwmCount = useMemo(() => Object.keys(pwm).length, [pwm]);
+  const serialLeds = useMemo(
+    () => serialLedVisibility(serialLedDeadlines, serialLedClock),
+    [serialLedClock, serialLedDeadlines],
+  );
   const firmware = board
     ? `${board.firmwareVersion.major}.${board.firmwareVersion.minor}.${board.firmwareVersion.patch}`
     : "—";
@@ -360,6 +411,7 @@ export function App() {
               <UnoBoard
                 pins={pins}
                 pwm={pwm}
+                serialLeds={serialLeds}
                 selectedDigitalPin={selectedPin}
                 selectedAnalogChannel={selectedAnalogChannel}
                 selectedPwmPin={selectedPwmPin}

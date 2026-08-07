@@ -61,6 +61,17 @@ pub struct GpioBatch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SerialActivityBatch {
+    /// Bytes transmitted by the Uno USB bridge and received by the desktop.
+    pub tx_bytes: u64,
+    /// Bytes received by the Uno USB bridge from the desktop.
+    pub rx_bytes: u64,
+    /// Desktop activity-indicator hold time.
+    pub pulse_duration_ms: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdcSample {
     pub sequence: u16,
     pub board_timestamp_us: u32,

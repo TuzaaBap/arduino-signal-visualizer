@@ -41,6 +41,14 @@ export interface GpioBatch {
   droppedUiEvents: number;
 }
 
+export interface SerialActivityBatch {
+  /** Bytes transmitted by the Uno USB bridge and received by the desktop. */
+  txBytes: number;
+  /** Bytes received by the Uno USB bridge from the desktop. */
+  rxBytes: number;
+  pulseDurationMs: number;
+}
+
 export type AdcReferenceMode = "default" | "internal" | "external";
 
 export interface AdcSample {

@@ -830,8 +830,8 @@ button:focus-visible,
 }
 
 .status-led circle {
-  fill: #38494f;
-  stroke: #698087;
+  fill: #101c21;
+  stroke: #40545b;
   stroke-width: 1;
 }
 
@@ -841,9 +841,11 @@ button:focus-visible,
   font-weight: 800;
 }
 
-.tx-led circle,
-.rx-led circle {
-  fill: #b2782c;
+.tx-led circle.active,
+.rx-led circle.active {
+  fill: #f4a62a;
+  stroke: #ffd17a;
+  filter: drop-shadow(0 0 7px rgb(247 189 88 / 82%));
 }
 
 .power-led circle {

@@ -20,13 +20,15 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::model::{
     AdcBatch, AdcSample, ConnectionMode, ConnectionPhase, ConnectionStatus, DiagnosticCategory,
-    GpioBatch, GpioUpdate, ProtocolDiagnostic, PwmBatch, PwmUpdate, SerialPortDescriptor,
+    GpioBatch, GpioUpdate, ProtocolDiagnostic, PwmBatch, PwmUpdate, SerialActivityBatch,
+    SerialPortDescriptor,
 };
 use crate::validation;
 
 const EVENT_CONNECTION_STATUS: &str = "asv://connection-status";
 const EVENT_BOARD_INFO: &str = "asv://board-info";
 const EVENT_GPIO_BATCH: &str = "asv://gpio-batch";
+const EVENT_SERIAL_ACTIVITY: &str = "asv://serial-activity";
 const EVENT_ADC_BATCH: &str = "asv://adc-batch";
 const EVENT_PWM_BATCH: &str = "asv://pwm-batch";
 const EVENT_DIAGNOSTIC: &str = "asv://protocol-diagnostic";
@@ -34,6 +36,9 @@ const UI_QUEUE_CAPACITY: usize = 256;
 const UI_FLUSH_INTERVAL: Duration = Duration::from_millis(33);
 const ADC_UI_PENDING_PER_CHANNEL: usize = 64;
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
+// Use a short activity envelope so burst boundaries remain visible in the UI.
+// This represents observed USB-serial activity, not individual UART bits.
+const USB_SERIAL_LED_PULSE_MS: u16 = 100;
 
 #[derive(Default)]
 pub struct ConnectionManager {
@@ -48,6 +53,32 @@ struct ActiveConnection {
 enum SourceMessage {
     Event(ProtocolEvent),
     Diagnostic(ProtocolDiagnostic),
+}
+
+#[derive(Default)]
+struct SerialActivityCounters {
+    tx_bytes: AtomicU64,
+    rx_bytes: AtomicU64,
+}
+
+impl SerialActivityCounters {
+    fn record_tx(&self, byte_count: usize) {
+        self.tx_bytes
+            .fetch_add(byte_count as u64, Ordering::Relaxed);
+    }
+
+    fn take_batch(&self) -> Option<SerialActivityBatch> {
+        let tx_bytes = self.tx_bytes.swap(0, Ordering::Relaxed);
+        let rx_bytes = self.rx_bytes.swap(0, Ordering::Relaxed);
+        if tx_bytes == 0 && rx_bytes == 0 {
+            return None;
+        }
+        Some(SerialActivityBatch {
+            tx_bytes,
+            rx_bytes,
+            pulse_duration_ms: USB_SERIAL_LED_PULSE_MS,
+        })
+    }
 }
 
 #[tauri::command]
@@ -215,12 +246,14 @@ fn start_serial_workers(
 ) -> ActiveConnection {
     let stop = Arc::new(AtomicBool::new(false));
     let dropped = Arc::new(AtomicU64::new(0));
+    let serial_activity = Arc::new(SerialActivityCounters::default());
     let (sender, receiver) = mpsc::sync_channel(UI_QUEUE_CAPACITY);
 
     let reader_stop = Arc::clone(&stop);
     let reader_dropped = Arc::clone(&dropped);
     let reader_port_name = port_name.clone();
     let reader_app = app.clone();
+    let reader_serial_activity = Arc::clone(&serial_activity);
     let reader = thread::spawn(move || {
         let mut bytes = [0_u8; 256];
         let mut decoder = StreamDecoder::resynchronizing();
@@ -230,6 +263,8 @@ fn start_serial_workers(
         while !reader_stop.load(Ordering::Relaxed) {
             match port.read(&mut bytes) {
                 Ok(count) if count > 0 => {
+                    // A successful desktop read means the Uno USB bridge transmitted these bytes.
+                    reader_serial_activity.record_tx(count);
                     for result in decoder.push(&bytes[..count]) {
                         match result {
                             Ok(packet)
@@ -285,6 +320,7 @@ fn start_serial_workers(
             dropped,
             ConnectionMode::Serial,
             Some(port_name),
+            Some(serial_activity),
         );
     });
 
@@ -361,6 +397,7 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
             delivery_stop,
             dropped,
             ConnectionMode::Mock,
+            None,
             None,
         );
     });
@@ -522,7 +559,13 @@ fn handle_packet(
     }
 
     match asv_protocol::decode_event(&packet) {
-        Ok(event @ (ProtocolEvent::AnalogSample { .. } | ProtocolEvent::PwmWrite { .. })) => {
+        // D13 drives the Uno's visible L indicator. Preserve its transitions so
+        // queue pressure cannot silently change the apparent blink cadence.
+        Ok(
+            event @ (ProtocolEvent::DigitalGpio { pin: 13, .. }
+            | ProtocolEvent::AnalogSample { .. }
+            | ProtocolEvent::PwmWrite { .. }),
+        ) => {
             let _ = send_preserved_event(sender, stop, SourceMessage::Event(event));
         }
         Ok(event) => try_send(sender, dropped, SourceMessage::Event(event)),
@@ -575,6 +618,7 @@ fn deliver_events(
     dropped: Arc<AtomicU64>,
     mode: ConnectionMode,
     port_name: Option<String>,
+    serial_activity: Option<Arc<SerialActivityCounters>>,
 ) {
     let started = Instant::now();
     let mut hello_received = false;
@@ -739,6 +783,7 @@ fn deliver_events(
 
         if Instant::now() >= next_flush {
             flush_gpio(&app, &mut latest_gpio, &dropped);
+            flush_serial_activity(&app, serial_activity.as_deref());
             flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
             flush_pwm(&app, &mut latest_pwm, &mut coalesced_pwm_ui_updates);
             next_flush = Instant::now() + UI_FLUSH_INTERVAL;
@@ -746,8 +791,16 @@ fn deliver_events(
         thread::sleep(Duration::from_millis(4));
     }
     flush_gpio(&app, &mut latest_gpio, &dropped);
+    flush_serial_activity(&app, serial_activity.as_deref());
     flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
     flush_pwm(&app, &mut latest_pwm, &mut coalesced_pwm_ui_updates);
+}
+
+fn flush_serial_activity(app: &AppHandle, counters: Option<&SerialActivityCounters>) {
+    let Some(batch) = counters.and_then(SerialActivityCounters::take_batch) else {
+        return;
+    };
+    let _ = app.emit(EVENT_SERIAL_ACTIVITY, batch);
 }
 
 fn flush_gpio(app: &AppHandle, latest_gpio: &mut BTreeMap<u8, GpioUpdate>, dropped: &AtomicU64) {
@@ -836,6 +889,23 @@ fn emit_diagnostic(app: &AppHandle, diagnostic: ProtocolDiagnostic) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serial_activity_is_batched_and_uses_the_ui_pulse_duration() {
+        let counters = SerialActivityCounters::default();
+        assert_eq!(counters.take_batch(), None);
+
+        counters.record_tx(17);
+        assert_eq!(
+            counters.take_batch(),
+            Some(SerialActivityBatch {
+                tx_bytes: 17,
+                rx_bytes: 0,
+                pulse_duration_ms: 100,
+            })
+        );
+        assert_eq!(counters.take_batch(), None);
+    }
 
     #[test]
     fn mock_source_is_deterministic_and_stays_within_uno_gpio() {

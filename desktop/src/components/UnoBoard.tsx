@@ -1,5 +1,6 @@
 import type { GpioState } from "../domain/gpio-store";
 import type { PwmState } from "../domain/pwm-store";
+import type { SerialLedVisibility } from "../domain/serial-led-state";
 import {
   UNO_R3_ANALOG_PINS,
   UNO_R3_AUXILIARY_HEADER,
@@ -12,6 +13,7 @@ import {
 interface UnoBoardProps {
   pins: GpioState;
   pwm: PwmState;
+  serialLeds: SerialLedVisibility;
   selectedDigitalPin: number;
   selectedAnalogChannel: number;
   selectedPwmPin: number;
@@ -70,6 +72,7 @@ function StaticHeaderSocket({
 export function UnoBoard({
   pins,
   pwm,
+  serialLeds,
   selectedDigitalPin,
   selectedAnalogChannel,
   selectedPwmPin,
@@ -288,15 +291,27 @@ export function UnoBoard({
           <text className="open-source-mark" x="570" y="272" textAnchor="middle">OPEN-SOURCE ELECTRONICS</text>
         </g>
 
-        <g className="status-led tx-led">
-          <circle cx="315" cy="199" r="7" />
+        <g
+          className="status-led tx-led"
+          aria-label={`TX serial activity ${serialLeds.tx ? "active" : "inactive"}`}
+        >
+          <title>TX: bytes transmitted by the Uno USB bridge to the desktop</title>
+          <circle className={serialLeds.tx ? "active" : ""} cx="315" cy="199" r="7" />
           <text x="315" y="218" textAnchor="middle">TX</text>
         </g>
-        <g className="status-led rx-led">
-          <circle cx="315" cy="229" r="7" />
+        <g
+          className="status-led rx-led"
+          aria-label={`RX serial activity ${serialLeds.rx ? "active" : "inactive"}`}
+        >
+          <title>RX: bytes received by the Uno USB bridge from the desktop</title>
+          <circle className={serialLeds.rx ? "active" : ""} cx="315" cy="229" r="7" />
           <text x="315" y="248" textAnchor="middle">RX</text>
         </g>
-        <g className="status-led signal-led">
+        <g
+          className="status-led signal-led"
+          aria-label={`L LED D13 ${pins[13]?.level === "high" ? "active" : "inactive"}`}
+        >
+          <title>L: instrumented digital state of D13 / SCK</title>
           <circle className={pins[13]?.level === "high" ? "active" : ""} cx="315" cy="259" r="7" />
           <text x="315" y="278" textAnchor="middle">L</text>
         </g>
