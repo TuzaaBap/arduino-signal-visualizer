@@ -70,16 +70,18 @@ def package(output_dir: Path) -> tuple[Path, Path, str]:
     with zipfile.ZipFile(
         archive_path,
         mode="w",
-        compression=zipfile.ZIP_DEFLATED,
-        compresslevel=9,
+        # Stored entries avoid zlib-version differences between Windows,
+        # macOS, and Linux, making the complete archive byte-reproducible.
+        compression=zipfile.ZIP_STORED,
     ) as archive:
         for source_path in source_files:
             relative_path = source_path.relative_to(library_root)
             archive_name = (Path(LIBRARY_NAME) / relative_path).as_posix()
             entry = zipfile.ZipInfo(archive_name, date_time=(2026, 1, 1, 0, 0, 0))
-            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.compress_type = zipfile.ZIP_STORED
+            entry.create_system = 3
             entry.external_attr = 0o100644 << 16
-            archive.writestr(entry, source_path.read_bytes(), compresslevel=9)
+            archive.writestr(entry, source_path.read_bytes())
 
     digest = hashlib.sha256(archive_path.read_bytes()).hexdigest().upper()
     checksum_path = archive_path.with_suffix(".zip.sha256")

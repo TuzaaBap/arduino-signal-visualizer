@@ -96,7 +96,7 @@ jobs:
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
-          releaseAssetNamePattern: Arduino-Signal-Visualizer-[version]-[platform]-[arch][setup].[ext]
+          releaseAssetNamePattern: Arduino-Signal-Visualizer-[version]-[platform]-[arch][setup][ext]
 
   arduino-library:
     name: Arduino IDE library ZIP

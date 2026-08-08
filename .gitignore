@@ -23,6 +23,7 @@ firmware/.arduino/
 
 # Editors and operating systems
 .DS_Store
+__pycache__/
 .idea/
 .vscode/
 Thumbs.db
