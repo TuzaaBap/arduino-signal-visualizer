@@ -18,7 +18,7 @@ jobs:
       matrix:
         os:
           - windows-latest
-          - macos-14
+          - macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +27,8 @@ jobs:
           cache: npm
       - name: Install JavaScript dependencies
         run: npm ci
+      - name: Check release version consistency
+        run: npm run check:versions
       - name: Type check
         run: npm run lint
       - name: Frontend tests
@@ -63,21 +65,28 @@ jobs:
           --fqbn arduino:avr:uno
           --library firmware/ArduinoSignalVisualizer
           --warnings all
-          firmware/examples/GpioDemo
+          firmware/ArduinoSignalVisualizer/examples/GpioDemo
       - name: Compile ADC example
         run: >-
           arduino-cli compile
           --fqbn arduino:avr:uno
           --library firmware/ArduinoSignalVisualizer
           --warnings all
-          firmware/examples/AdcDemo
+          firmware/ArduinoSignalVisualizer/examples/AdcDemo
       - name: Compile PWM example
         run: >-
           arduino-cli compile
           --fqbn arduino:avr:uno
           --library firmware/ArduinoSignalVisualizer
           --warnings all
-          firmware/examples/PwmDemo
+          firmware/ArduinoSignalVisualizer/examples/PwmDemo
+      - name: Compile transparent Serial example
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/ArduinoSignalVisualizer/examples/TransparentSerialDemo
       - name: Compile native protocol test
         run: >-
           g++ -std=c++11 -Wall -Wextra -Werror
@@ -87,6 +96,6 @@ jobs:
       - name: Validate shared protocol vector
         run: >-
           /tmp/asv-protocol-test
-          protocol/test-vectors/digital-write-d13-high.hex
-          protocol/test-vectors/analog-a0-midscale.hex
-          protocol/test-vectors/pwm-d9-half-duty.hex
+          protocol/test-vectors/v2-digital-write-d13-high.hex
+          protocol/test-vectors/v2-analog-a0-midscale.hex
+          protocol/test-vectors/v2-pwm-d9-half-duty.hex

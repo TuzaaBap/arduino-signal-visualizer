@@ -241,6 +241,10 @@ select:disabled {
   gap: 7px;
 }
 
+.connection-panel > select {
+  width: 100%;
+}
+
 select,
 .icon-button {
   height: 38px;
@@ -308,6 +312,17 @@ button:focus-visible,
   margin: 13px 0 0;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.45;
+}
+
+.serial-ownership-note {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border: 1px solid rgb(77 148 157 / 32%);
+  border-radius: 8px;
+  color: #a9c7cc;
+  background: rgb(10 30 35 / 54%);
+  font-size: 10px;
   line-height: 1.45;
 }
 

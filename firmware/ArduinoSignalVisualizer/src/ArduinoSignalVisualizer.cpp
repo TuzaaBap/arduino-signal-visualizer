@@ -21,6 +21,10 @@ void ArduinoSignalVisualizer::begin(unsigned long baud) {
 void ArduinoSignalVisualizer::begin(HardwareSerial& serial,
                                     unsigned long baud) {
   serial.begin(baud);
+  attach(serial);
+}
+
+void ArduinoSignalVisualizer::attach(HardwareSerial& serial) {
   transport_ = &serial;
   sequence_ = 0;
   sendHello();

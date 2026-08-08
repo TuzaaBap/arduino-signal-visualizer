@@ -9,7 +9,7 @@ Validated on Windows 11 with an Arduino Uno R3 on 2026-07-29.
 - Port: `COM6`.
 - PlatformIO environment: `atmelavr@5.3.0`, board `uno`, Arduino framework.
 - Uploader: avrdude 6.3, `arduino` protocol, 115200 baud.
-- Firmware: `firmware/examples/GpioDemo/GpioDemo.ino`.
+- Firmware: `firmware/ArduinoSignalVisualizer/examples/GpioDemo/GpioDemo.ino`.
 - Flash use: 3,122 of 32,256 bytes (9.7%).
 - SRAM use: 233 of 2,048 bytes (11.4%).
 - Uploaded HEX SHA-256:

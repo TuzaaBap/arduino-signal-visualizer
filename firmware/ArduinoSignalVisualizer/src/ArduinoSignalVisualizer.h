@@ -13,6 +13,7 @@ class ArduinoSignalVisualizer {
 
   void begin(unsigned long baud = kDefaultBaud);
   void begin(HardwareSerial& serial, unsigned long baud = kDefaultBaud);
+  void attach(HardwareSerial& serial);
 
   void pinMode(uint8_t pin, uint8_t mode);
   void digitalWrite(uint8_t pin, uint8_t value);

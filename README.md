@@ -4,8 +4,31 @@ Arduino Signal Visualizer is a cross-platform desktop application that turns
 instrumentation events from a real Arduino Uno R3 into understandable live
 visuals.
 
-The application observes operations made through the `ASV` Arduino library. It
-is not a simulator and it does not passively inspect unmodified sketches.
+The application observes operations instrumented by the
+`ArduinoSignalVisualizer` Arduino library. Sketches can keep familiar Arduino
+calls such as `digitalWrite`, `analogRead`, `analogWrite`, and normal
+`Serial.print` after including `ASVInstrumented.h`. The application is not a
+simulator and cannot passively inspect a sketch that does not include the
+library.
+
+## Beta quick start
+
+Each beta release contains matching desktop and Arduino library artifacts:
+
+1. Install the Windows setup executable or the DMG matching the Mac processor.
+2. In Arduino IDE 2, choose **Sketch > Include Library > Add .ZIP Library...**
+   and select `ArduinoSignalVisualizer-0.4.0.zip`.
+3. Open **File > Examples > ArduinoSignalVisualizer >
+   TransparentSerialDemo**, select the Arduino Uno and upload.
+4. Close Arduino IDE Serial Monitor, open Arduino Signal Visualizer, select the
+   board port and the baud rate used by the sketch, and connect.
+5. Use the application's Serial tab for the sketch's normal text input/output
+   while the application is connected.
+
+Only one desktop process can own a serial port at a time. The app does not run
+in the background or open a board until the user connects. See
+[docs/distribution.md](docs/distribution.md) for supported installers, beta
+signing warnings, release procedure, and checksums.
 
 ## Milestone 1
 

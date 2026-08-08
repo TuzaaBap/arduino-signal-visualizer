@@ -101,10 +101,12 @@ project setup step.
 ## Hardware
 
 1. Install the Arduino AVR core.
-2. Compile and upload either `firmware/examples/GpioDemo/GpioDemo.ino` or the
-   explicit Milestone 2 target `firmware/examples/AdcDemo/AdcDemo.ino`.
+2. Compile and upload either
+   `firmware/ArduinoSignalVisualizer/examples/GpioDemo/GpioDemo.ino` or the
+   explicit ADC target
+   `firmware/ArduinoSignalVisualizer/examples/AdcDemo/AdcDemo.ino`.
 3. Close Arduino Serial Monitor so the desktop app can own the serial port.
-4. Select the port in the app and choose **Connect**.
+4. Select the port and matching baud rate in the app, then choose **Connect**.
 
 The example uses 115200 baud. The Uno normally resets when the serial port is
 opened; the desktop waits for the ASV hello frame.

@@ -66,6 +66,7 @@ export function App() {
   const [status, setStatus] = useState(INITIAL_STATUS);
   const [ports, setPorts] = useState<SerialPortDescriptor[]>([]);
   const [selectedPort, setSelectedPort] = useState("");
+  const [selectedBaud, setSelectedBaud] = useState(115_200);
   const [board, setBoard] = useState<BoardDescriptor | null>(null);
   const [pins, setPins] = useState<GpioState>({});
   const [analog, setAnalog] = useState<AnalogState>({});
@@ -346,12 +347,14 @@ export function App() {
             status={status}
             ports={ports}
             selectedPort={selectedPort}
+            selectedBaud={selectedBaud}
             busy={busy}
             backendReady={backendReady}
             onSelectedPortChange={setSelectedPort}
+            onSelectedBaudChange={setSelectedBaud}
             onRefresh={() => void refreshPorts()}
             onConnect={() =>
-              void perform(() => connectSerial(selectedPort, 115_200))
+              void perform(() => connectSerial(selectedPort, selectedBaud))
             }
             onMock={() => void perform(startMock)}
             onDisconnect={() => void perform(disconnect)}

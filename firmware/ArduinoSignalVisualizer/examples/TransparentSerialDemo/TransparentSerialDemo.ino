@@ -1,6 +1,7 @@
 #include <ASVInstrumented.h>
 
 constexpr uint8_t kLedPin = LED_BUILTIN;
+constexpr unsigned long kSerialBaud = 115200;
 constexpr unsigned long kTogglePeriodMs = 1000;
 
 unsigned long lastToggleMs = 0;
@@ -8,7 +9,8 @@ unsigned long messageNumber = 0;
 bool ledHigh = false;
 
 void setup() {
-  ASV.begin(115200);
+  Serial.begin(kSerialBaud);
+  ASV.attach(Serial);
   pinMode(kLedPin, OUTPUT);
   Serial.println("Transparent Serial and ASV telemetry are both active.");
 }

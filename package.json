@@ -7,9 +7,11 @@
   ],
   "scripts": {
     "build": "npm run build --workspace desktop",
+    "check:versions": "python scripts/check_release_versions.py",
     "dev": "npm run dev --workspace desktop",
     "generate:icon": "node scripts/generate-icon.mjs",
     "lint": "npm run lint --workspace desktop",
+    "package:arduino": "python scripts/package_arduino_library.py",
     "test": "npm run test --workspace desktop",
     "tauri": "npm run tauri --workspace desktop"
   },

@@ -7,7 +7,8 @@ Validated on Windows 11 with an Arduino Uno R3 on 2026-08-02.
 - Board: Arduino Uno R3, USB VID/PID `2341:0043`, serial
   `7583435373035140D122`.
 - Port: `COM6` at 115200 baud.
-- Firmware: `firmware/examples/AdcDemo/AdcDemo.ino`, version `0.2.0`.
+- Firmware: `firmware/ArduinoSignalVisualizer/examples/AdcDemo/AdcDemo.ino`,
+  version `0.2.0`.
 - PlatformIO target: `uno_adc_demo`, `atmelavr@5.3.0`, Arduino framework.
 - Uploader: avrdude 6.3 using the `arduino` protocol at 115200 baud.
 - Upload result: all 3,006 bytes written and verified on the first attempt.

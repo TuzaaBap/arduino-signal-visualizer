@@ -179,7 +179,9 @@ pub(crate) fn connect_serial_inner(
     {
         Ok(port) => port,
         Err(error) => {
-            let detail = format!("Could not open {port_name}: {error}");
+            let detail = format!(
+                "Could not open {port_name}: {error}. Close Arduino IDE Serial Monitor or any other terminal using this port, then reconnect."
+            );
             emit_status(
                 &app,
                 ConnectionPhase::Error,

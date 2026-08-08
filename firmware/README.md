@@ -10,7 +10,8 @@ first and `ASVInstrumented.h` last:
 #include <ASVInstrumented.h>
 
 void setup() {
-  ASV.begin(115200);
+  Serial.begin(115200);
+  ASV.attach(Serial);
   pinMode(13, OUTPUT);
   Serial.println("Normal user Serial output");
 }
@@ -28,6 +29,10 @@ The header redirects sketch calls to `pinMode`, `digitalWrite`, `digitalRead`,
 and separately compiled third-party libraries are unchanged. The explicit
 `ArduinoSignalVisualizer.h` header remains available when `ASV.digitalWrite()`
 style calls are preferred.
+
+`ASV.attach(Serial)` preserves a sketch's own UART initialization. The shorter
+`ASV.begin(baud)` form initializes `Serial` for a new sketch. In either case,
+select the same baud in the desktop application.
 
 ## Shared UART and normal Serial output
 
@@ -67,7 +72,7 @@ than an electrical voltage measurement.
 ```powershell
 arduino-cli compile --fqbn arduino:avr:uno `
   --library firmware/ArduinoSignalVisualizer `
-firmware/examples/GpioDemo
+firmware/ArduinoSignalVisualizer/examples/GpioDemo
 ```
 
 Compile the Milestone 2 ADC example:
@@ -75,7 +80,7 @@ Compile the Milestone 2 ADC example:
 ```powershell
 arduino-cli compile --fqbn arduino:avr:uno `
   --library firmware/ArduinoSignalVisualizer `
-firmware/examples/AdcDemo
+firmware/ArduinoSignalVisualizer/examples/AdcDemo
 ```
 
 Compile the Milestone 3 PWM example:
@@ -83,7 +88,7 @@ Compile the Milestone 3 PWM example:
 ```powershell
 arduino-cli compile --fqbn arduino:avr:uno `
   --library firmware/ArduinoSignalVisualizer `
-  firmware/examples/PwmDemo
+  firmware/ArduinoSignalVisualizer/examples/PwmDemo
 ```
 
 Compile the transparent Serial example:

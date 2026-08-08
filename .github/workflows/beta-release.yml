@@ -1,0 +1,143 @@
+name: Beta Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Beta tag matching the source version, for example v0.4.0-beta.1
+        required: true
+        default: v0.4.0-beta.1
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beta-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare draft prerelease
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version and create draft
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python scripts/check_release_versions.py --print-version)"
+          prefix="v${version}-beta."
+          beta_number="${TAG#"$prefix"}"
+          if [[ "$TAG" != "$prefix"* || ! "$beta_number" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Tag $TAG must match v${version}-beta.N, where N is positive" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Arduino Signal Visualizer $TAG" \
+              --notes-file docs/beta-release-notes.md \
+              --draft \
+              --prerelease
+          fi
+
+  desktop:
+    name: Desktop bundle (${{ matrix.label }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --bundles nsis,msi
+          - label: macOS Apple silicon
+            os: macos-15
+            rust_target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles dmg
+          - label: macOS Intel
+            os: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles dmg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Install Rust toolchain and target
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: ${{ matrix.rust_target }}
+      - name: Build and attach installer
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.os, 'macos') && '-' || '' }}
+        with:
+          projectPath: desktop
+          tauriScript: npm run tauri --
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}
+          releaseAssetNamePattern: Arduino-Signal-Visualizer-[version]-[platform]-[arch][setup].[ext]
+
+  arduino-library:
+    name: Arduino IDE library ZIP
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install Arduino AVR core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+      - name: Build deterministic library ZIP
+        run: python scripts/package_arduino_library.py --output-dir outputs/release
+      - name: Install ZIP into isolated Arduino directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/asv-arduino-zip-test"
+          config="$test_root/arduino-cli.yaml"
+          user_dir="$test_root/user"
+          mkdir -p "$user_dir"
+          arduino-cli config init --dest-file "$config" --overwrite
+          arduino-cli config set directories.user "$user_dir" --config-file "$config"
+          arduino-cli config set library.enable_unsafe_install true --config-file "$config"
+          arduino-cli lib install \
+            --zip-path outputs/release/ArduinoSignalVisualizer-${{ needs.prepare.outputs.version }}.zip \
+            --config-file "$config"
+          for example in GpioDemo AdcDemo PwmDemo TransparentSerialDemo; do
+            arduino-cli compile \
+              --fqbn arduino:avr:uno \
+              --warnings all \
+              --config-file "$config" \
+              "$user_dir/libraries/ArduinoSignalVisualizer/examples/$example"
+          done
+      - name: Attach library ZIP and checksum
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: >-
+          gh release upload "$TAG"
+          outputs/release/ArduinoSignalVisualizer-${{ needs.prepare.outputs.version }}.zip
+          outputs/release/ArduinoSignalVisualizer-${{ needs.prepare.outputs.version }}.zip.sha256
+          --clobber

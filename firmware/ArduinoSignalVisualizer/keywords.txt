@@ -1,0 +1,11 @@
+ASV	KEYWORD1
+ArduinoSignalVisualizer	KEYWORD1
+ASVInstrumented	KEYWORD1
+begin	KEYWORD2
+attach	KEYWORD2
+pinMode	KEYWORD2
+digitalWrite	KEYWORD2
+digitalRead	KEYWORD2
+analogReference	KEYWORD2
+analogRead	KEYWORD2
+analogWrite	KEYWORD2

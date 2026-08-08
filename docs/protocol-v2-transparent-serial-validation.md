@@ -2,7 +2,7 @@
 
 Date: 2026-08-08
 
-Status: physically validated; changes remain uncommitted pending product review.
+Status: physically validated on the hardware listed below.
 
 ## Hardware and upload
 
@@ -10,7 +10,8 @@ Status: physically validated; changes remain uncommitted pending product review.
   `7583435373035140D122`.
 - MCU signature: ATmega328P `0x1e950f`.
 - Firmware and desktop version: `0.4.0`.
-- Firmware: `firmware/examples/TransparentSerialDemo/TransparentSerialDemo.ino`.
+- Firmware:
+  `firmware/ArduinoSignalVisualizer/examples/TransparentSerialDemo/TransparentSerialDemo.ino`.
 - PlatformIO environment: `atmelavr@5.3.0`, board `uno`, Arduino framework.
 - Uploader: avrdude 6.3 using the `arduino` protocol.
 - Upload result: first and only attempt succeeded; all 3,114 flash bytes were
@@ -19,6 +20,10 @@ Status: physically validated; changes remain uncommitted pending product review.
 - SRAM: 314 of 2,048 bytes (15.3%).
 - Uploaded HEX SHA-256:
   `8AB3B510348DB5DD35666E0CA83E49B74FA2790F4F9E17CFCD6A2E68AD541181`.
+- The Arduino IDE example now preserves the sketch's own
+  `Serial.begin(115200)` and calls `ASV.attach(Serial)`. Rebuilding this form
+  produced the identical HEX hash above; its single upload also wrote and
+  verified all 3,114 bytes.
 
 ## Shared-UART functional validation
 
@@ -35,6 +40,10 @@ Status: physically validated; changes remain uncommitted pending product review.
   difference is explained by startup/reconnect boundary observations.
 - Frontend GPIO delivery remained active, with 1,839 UI acknowledgements in the
   final snapshot.
+- A current-source 25-second confirmation performed the complete
+  `waiting -> connected -> disconnected -> waiting -> connected` sequence,
+  received 20 GPIO updates and 597 separated user Serial bytes, and reported
+  zero dropped user bytes, CRC failures, queue warnings, or diagnostics.
 
 ## Thirty-minute stability gate
 

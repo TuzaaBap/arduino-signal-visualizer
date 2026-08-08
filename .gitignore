@@ -9,6 +9,12 @@ desktop/src-tauri/gen/
 
 # Tauri bundles
 desktop/src-tauri/target/
+# The desktop icon command also emits mobile/Store assets that are not shipped.
+desktop/src-tauri/icons/android/
+desktop/src-tauri/icons/ios/
+desktop/src-tauri/icons/64x64.png
+desktop/src-tauri/icons/Square*Logo.png
+desktop/src-tauri/icons/StoreLogo.png
 
 # Arduino
 firmware/build/
