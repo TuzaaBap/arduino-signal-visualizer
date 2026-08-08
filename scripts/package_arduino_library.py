@@ -60,12 +60,17 @@ def package(output_dir: Path) -> tuple[Path, Path, str]:
     archive_path = output_dir / f"{LIBRARY_NAME}-{version}.zip"
 
     source_files = sorted(
-        path
-        for path in library_root.rglob("*")
-        if path.is_file()
-        and path.name not in {".DS_Store", ".development"}
-        and path.suffix not in {".pyc"}
-        and "__pycache__" not in path.parts
+        (
+            path
+            for path in library_root.rglob("*")
+            if path.is_file()
+            and path.name not in {".DS_Store", ".development"}
+            and path.suffix not in {".pyc"}
+            and "__pycache__" not in path.parts
+        ),
+        # pathlib ordering follows the host path flavour. Sort the portable
+        # archive path explicitly so Windows, macOS, and Linux use one order.
+        key=lambda path: path.relative_to(library_root).as_posix(),
     )
     with zipfile.ZipFile(
         archive_path,
