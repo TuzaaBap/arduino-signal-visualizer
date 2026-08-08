@@ -10,8 +10,6 @@ first and `ASVInstrumented.h` last:
 #include <ASVInstrumented.h>
 
 void setup() {
-  Serial.begin(115200);
-  ASV.attach(Serial);
   pinMode(13, OUTPUT);
   Serial.println("Normal user Serial output");
 }
@@ -24,15 +22,22 @@ void loop() {
 }
 ```
 
+The include automatically starts ASV at 115200 baud, attaches after the
+user's `setup()` completes, and services pending telemetry around each normal
+`loop()` call. The sketch does not call `ASV.begin()`, `ASV.attach()`, or
+`ASV.service()`.
+
 The header redirects sketch calls to `pinMode`, `digitalWrite`, `digitalRead`,
 `analogReference`, `analogRead`, and `analogWrite`. The underlying Arduino core
 and separately compiled third-party libraries are unchanged. The explicit
 `ArduinoSignalVisualizer.h` header remains available when `ASV.digitalWrite()`
 style calls are preferred.
 
-`ASV.attach(Serial)` preserves a sketch's own UART initialization. The shorter
-`ASV.begin(baud)` form initializes `Serial` for a new sketch. In either case,
-select the same baud in the desktop application.
+If the sketch calls normal `Serial.begin(baud)` in `setup()`, that speed wins;
+select the same baud in the desktop application. If it does not, ASV uses
+115200 baud. The explicit `ArduinoSignalVisualizer.h` API retains `ASV.begin`
+and `ASV.attach` for advanced integrations that do not include
+`ASVInstrumented.h`.
 
 ## Shared UART and normal Serial output
 

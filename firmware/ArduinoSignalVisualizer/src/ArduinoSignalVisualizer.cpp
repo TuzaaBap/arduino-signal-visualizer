@@ -8,9 +8,20 @@ ArduinoSignalVisualizer::ArduinoSignalVisualizer()
     : transport_(nullptr),
       sequence_(0),
       analogReferenceMode_(0),
-      analogReferenceMillivolts_(5000) {
+      analogReferenceMillivolts_(5000),
+      observedDigitalMask_(0),
+      observedAnalogMask_(0),
+      observedPwmMask_(0),
+      pendingDigitalMask_(0),
+      pendingAnalogMask_(0),
+      pendingPwmMask_(0),
+      helloPending_(false) {
   for (uint8_t pin = 0; pin < kDigitalPinCount; ++pin) {
     pinModes_[pin] = kUnknownMode;
+    lastPwmValues_[pin] = 0;
+  }
+  for (uint8_t channel = 0; channel < kAnalogChannelCount; ++channel) {
+    lastAnalogValues_[channel] = 0;
   }
 }
 
@@ -27,7 +38,57 @@ void ArduinoSignalVisualizer::begin(HardwareSerial& serial,
 void ArduinoSignalVisualizer::attach(HardwareSerial& serial) {
   transport_ = &serial;
   sequence_ = 0;
-  sendHello();
+  helloPending_ = true;
+  pendingDigitalMask_ = observedDigitalMask_;
+  pendingAnalogMask_ = observedAnalogMask_;
+  pendingPwmMask_ = observedPwmMask_;
+  service();
+}
+
+void ArduinoSignalVisualizer::service() {
+  if (transport_ == nullptr) {
+    return;
+  }
+
+  if (helloPending_) {
+    helloPending_ = !sendHello(false);
+    return;
+  }
+
+  for (uint8_t pin = 0; pin < kDigitalPinCount; ++pin) {
+    const uint16_t pinMask = static_cast<uint16_t>(1U << pin);
+    if ((pendingDigitalMask_ & pinMask) == 0) {
+      continue;
+    }
+    if (sendDigital(pin, static_cast<uint8_t>(::digitalRead(pin) == HIGH), 2,
+                    false)) {
+      pendingDigitalMask_ &= static_cast<uint16_t>(~pinMask);
+    }
+    return;
+  }
+
+  for (uint8_t channel = 0; channel < kAnalogChannelCount; ++channel) {
+    const uint8_t channelMask = static_cast<uint8_t>(1U << channel);
+    if ((pendingAnalogMask_ & channelMask) == 0) {
+      continue;
+    }
+    if (sendAnalog(channel, lastAnalogValues_[channel], false)) {
+      pendingAnalogMask_ &= static_cast<uint8_t>(~channelMask);
+    }
+    return;
+  }
+
+  for (uint8_t pin = 0; pin < kDigitalPinCount; ++pin) {
+    const uint16_t pwmMask = static_cast<uint16_t>(1U << pin);
+    if ((pendingPwmMask_ & pwmMask) == 0) {
+      continue;
+    }
+    if (sendPwm(pin, lastPwmValues_[pin], false) ||
+        lastPwmValues_[pin] == 0 || lastPwmValues_[pin] == 255) {
+      pendingPwmMask_ &= static_cast<uint16_t>(~pwmMask);
+    }
+    return;
+  }
 }
 
 void ArduinoSignalVisualizer::pinMode(uint8_t pin, uint8_t mode) {
@@ -37,12 +98,14 @@ void ArduinoSignalVisualizer::pinMode(uint8_t pin, uint8_t mode) {
   }
 
   pinModes_[pin] = wireMode(mode);
+  observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
   sendDigital(pin, static_cast<uint8_t>(::digitalRead(pin) == HIGH), 2);
 }
 
 void ArduinoSignalVisualizer::digitalWrite(uint8_t pin, uint8_t value) {
   ::digitalWrite(pin, value);
   if (pin < kDigitalPinCount) {
+    observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
     sendDigital(pin, static_cast<uint8_t>(value == HIGH), 0);
   }
 }
@@ -50,6 +113,7 @@ void ArduinoSignalVisualizer::digitalWrite(uint8_t pin, uint8_t value) {
 int ArduinoSignalVisualizer::digitalRead(uint8_t pin) {
   const int value = ::digitalRead(pin);
   if (pin < kDigitalPinCount) {
+    observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
     sendDigital(pin, static_cast<uint8_t>(value == HIGH), 1);
   }
   return value;
@@ -71,6 +135,8 @@ int ArduinoSignalVisualizer::analogRead(uint8_t pin) {
   const int value = ::analogRead(pin);
   const uint8_t channel = analogChannel(pin);
   if (channel != kUnknownAnalogChannel && value >= 0) {
+    observedAnalogMask_ |= static_cast<uint8_t>(1U << channel);
+    lastAnalogValues_[channel] = static_cast<uint16_t>(value);
     sendAnalog(channel, static_cast<uint16_t>(value));
   }
   return value;
@@ -84,30 +150,36 @@ void ArduinoSignalVisualizer::analogWrite(uint8_t pin, int value) {
 
   pinModes_[pin] = wireMode(OUTPUT);
   if (isPwmPin(pin) && value >= 0 && value <= 255) {
+    observedPwmMask_ |= static_cast<uint16_t>(1U << pin);
+    lastPwmValues_[pin] = static_cast<uint8_t>(value);
     sendPwm(pin, static_cast<uint8_t>(value));
   } else if (!isPwmPin(pin)) {
+    observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
     sendDigital(pin, static_cast<uint8_t>(value < 128 ? LOW : HIGH), 0);
   }
 }
 
-void ArduinoSignalVisualizer::sendHello() {
+bool ArduinoSignalVisualizer::sendHello(bool recordDrop) {
   const uint8_t payload[] = {
       1,     // Arduino Uno R3
-      0, 4, 0,  // firmware 0.4.0
+      0, 5, 0,  // firmware 0.5.0
       15, 0,  // digital GPIO, ADC, PWM, and transparent Serial capabilities
       0,     // reset cause is unknown in the portable v1 implementation
       0x88, 0x13,  // 5000 mV
   };
-  sendPacket(asv::kBoardHelloPacket, payload, sizeof(payload));
+  return sendPacket(asv::kBoardHelloPacket, payload, sizeof(payload),
+                    recordDrop);
 }
 
-void ArduinoSignalVisualizer::sendDigital(uint8_t pin, uint8_t level,
-                                          uint8_t source) {
+bool ArduinoSignalVisualizer::sendDigital(uint8_t pin, uint8_t level,
+                                          uint8_t source, bool recordDrop) {
   const uint8_t payload[] = {pin, pinModes_[pin], level, source};
-  sendPacket(asv::kDigitalGpioPacket, payload, sizeof(payload));
+  return sendPacket(asv::kDigitalGpioPacket, payload, sizeof(payload),
+                    recordDrop);
 }
 
-void ArduinoSignalVisualizer::sendAnalog(uint8_t channel, uint16_t rawValue) {
+bool ArduinoSignalVisualizer::sendAnalog(uint8_t channel, uint16_t rawValue,
+                                         bool recordDrop) {
   const uint8_t payload[] = {
       asv::kAnalogEventVersion,
       channel,
@@ -118,16 +190,18 @@ void ArduinoSignalVisualizer::sendAnalog(uint8_t channel, uint16_t rawValue) {
       static_cast<uint8_t>(analogReferenceMillivolts_ & 0xff),
       static_cast<uint8_t>(analogReferenceMillivolts_ >> 8),
   };
-  sendPacket(asv::kAnalogSamplePacket, payload, sizeof(payload));
+  return sendPacket(asv::kAnalogSamplePacket, payload, sizeof(payload),
+                    recordDrop);
 }
 
-void ArduinoSignalVisualizer::sendPwm(uint8_t pin, uint8_t dutyValue) {
+bool ArduinoSignalVisualizer::sendPwm(uint8_t pin, uint8_t dutyValue,
+                                      bool recordDrop) {
   const bool constantLow = dutyValue == 0;
   const bool constantHigh = dutyValue == 255;
   const uint8_t outputMode = constantLow ? 0 : (constantHigh ? 2 : 1);
   PwmTimerSnapshot timer = {};
   if (!readPwmTimerSnapshot(pin, timer)) {
-    return;
+    return false;
   }
   const uint8_t payload[] = {
       asv::kPwmEventVersion,
@@ -155,32 +229,38 @@ void ArduinoSignalVisualizer::sendPwm(uint8_t pin, uint8_t dutyValue) {
       timer.controlA,
       timer.controlB,
   };
-  sendPacket(asv::kPwmWritePacket, payload, sizeof(payload));
+  return sendPacket(asv::kPwmWritePacket, payload, sizeof(payload), recordDrop);
 }
 
-void ArduinoSignalVisualizer::sendPacket(uint8_t packetType,
+bool ArduinoSignalVisualizer::sendPacket(uint8_t packetType,
                                          const uint8_t* payload,
-                                         size_t payloadLength) {
+                                         size_t payloadLength,
+                                         bool recordDrop) {
   if (transport_ == nullptr) {
-    return;
+    return false;
   }
 
   uint8_t frame[asv::kMaximumEncodedFrameLength];
-  const uint16_t packetSequence = sequence_++;
+  const uint16_t packetSequence = sequence_;
   const size_t frameLength =
       asv::encodePacket(packetType, packetSequence, micros(), payload, payloadLength,
                         frame, sizeof(frame));
   if (frameLength == 0) {
-    return;
+    return false;
   }
 
   // HardwareSerial has a small fixed transmit buffer on the Uno. Never block
   // the sketch behind instrumentation; a sequence gap tells the desktop that
   // telemetry was skipped while user Serial output had priority.
   if (transport_->availableForWrite() < static_cast<int>(frameLength)) {
-    return;
+    if (recordDrop) {
+      ++sequence_;
+    }
+    return false;
   }
+  ++sequence_;
   transport_->write(frame, frameLength);
+  return true;
 }
 
 uint8_t ArduinoSignalVisualizer::wireMode(uint8_t arduinoMode) const {

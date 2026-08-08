@@ -13,7 +13,6 @@ bool ledHigh = false;
 size_t walkingIndex = 0;
 
 void setup() {
-  ASV.begin();
   pinMode(kLedPin, OUTPUT);
   digitalWrite(kLedPin, LOW);
   digitalRead(kLedPin);

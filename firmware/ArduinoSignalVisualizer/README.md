@@ -7,11 +7,11 @@ in the application's separate Serial Monitor.
 
 ## Install in Arduino IDE 2
 
-1. Download `ArduinoSignalVisualizer-0.4.0.zip` from the matching GitHub beta
+1. Download `ArduinoSignalVisualizer-0.5.0.zip` from the matching GitHub beta
    release.
 2. In Arduino IDE, select **Sketch > Include Library > Add .ZIP Library...**.
 3. Select the downloaded ZIP.
-4. Open **File > Examples > ArduinoSignalVisualizer > TransparentSerialDemo**.
+4. Open **File > Examples > ArduinoSignalVisualizer > BareMinimum**.
 
 The desktop application and library should use the same release version.
 
@@ -24,10 +24,20 @@ header:
 #include <ASVInstrumented.h>
 
 void setup() {
-  Serial.begin(115200);
-  ASV.attach(Serial);
+}
+
+void loop() {
+}
+```
+
+That single include performs the ASV startup and maintenance work. The sketch
+continues to use ordinary Arduino functions:
+
+```cpp
+#include <ASVInstrumented.h>
+
+void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  Serial.println("Normal sketch output");
 }
 
 void loop() {
@@ -42,11 +52,21 @@ void loop() {
 `analogWrite` keep their normal Arduino-facing behavior while producing ASV
 telemetry. The core `Serial` object is not replaced.
 
-`ASV.attach(Serial)` is the compatibility-first form: the sketch initializes
-the UART exactly as it normally would, then gives ASV permission to share it.
-For a new sketch, `ASV.begin(115200)` is the shorter equivalent and initializes
-`Serial` itself. Select the same baud rate in the desktop connection panel.
-Do not initialize the same UART again at a different rate after attaching ASV.
+If the sketch does not configure `Serial`, ASV uses 115200 baud. A sketch that
+needs another supported speed can use its normal Arduino call; no ASV call is
+required:
+
+```cpp
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Normal sketch output");
+}
+```
+
+Select that same baud rate in the desktop connection panel. ASV attaches after
+the user's `setup()` returns, so its hello packet uses the final UART
+configuration. The explicit `ArduinoSignalVisualizer.h` API remains available
+for advanced integrations that intentionally manage the lifecycle themselves.
 
 ## Serial ownership
 

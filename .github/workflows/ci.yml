@@ -66,6 +66,13 @@ jobs:
           --library firmware/ArduinoSignalVisualizer
           --warnings all
           firmware/ArduinoSignalVisualizer/examples/GpioDemo
+      - name: Compile zero-configuration example
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/ArduinoSignalVisualizer/examples/BareMinimum
       - name: Compile ADC example
         run: >-
           arduino-cli compile
@@ -87,6 +94,13 @@ jobs:
           --library firmware/ArduinoSignalVisualizer
           --warnings all
           firmware/ArduinoSignalVisualizer/examples/TransparentSerialDemo
+      - name: Compile explicit API compatibility test
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/tests/sketches/ExplicitApi
       - name: Compile native protocol test
         run: >-
           g++ -std=c++11 -Wall -Wextra -Werror

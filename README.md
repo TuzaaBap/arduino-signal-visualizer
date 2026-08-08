@@ -17,9 +17,10 @@ Each beta release contains matching desktop and Arduino library artifacts:
 
 1. Install the Windows setup executable or the DMG matching the Mac processor.
 2. In Arduino IDE 2, choose **Sketch > Include Library > Add .ZIP Library...**
-   and select `ArduinoSignalVisualizer-0.4.0.zip`.
-3. Open **File > Examples > ArduinoSignalVisualizer >
-   TransparentSerialDemo**, select the Arduino Uno and upload.
+   and select `ArduinoSignalVisualizer-0.5.0.zip`.
+3. Open **File > Examples > ArduinoSignalVisualizer > BareMinimum**, select
+   the Arduino Uno and upload. For an existing sketch, add only
+   `#include <ASVInstrumented.h>` after its other library headers.
 4. Close Arduino IDE Serial Monitor, open Arduino Signal Visualizer, select the
    board port and the baud rate used by the sketch, and connect.
 5. Use the application's Serial tab for the sketch's normal text input/output
@@ -34,7 +35,8 @@ signing warnings, release procedure, and checksums.
 
 The first milestone provides an end-to-end digital GPIO path:
 
-1. An instrumented sketch calls `ASV.digitalWrite`.
+1. An ordinary sketch calls `digitalWrite` after including
+   `ASVInstrumented.h`.
 2. The Arduino library sends a checksummed COBS frame over USB serial.
 3. Rust validates and decodes the frame.
 4. React receives typed GPIO events and updates an interactive Uno view.
@@ -44,7 +46,7 @@ is unavailable.
 
 ## Milestone 2
 
-The second milestone adds instrumented `ASV.analogRead(A0)` support and a
+The second milestone adds instrumented `analogRead(A0)` support and a
 versioned ADC event. The Analog tab displays A0-A5 raw counts,
 desktop-calculated voltage, reference metadata, percentage of full scale, and
 bounded trend graphs. These trends are intentionally not presented as
@@ -52,7 +54,7 @@ oscilloscope-grade or calibrated measurements.
 
 ## Milestone 3
 
-The third milestone adds checked `ASV.analogWrite(pin, duty)` instrumentation
+The third milestone adds checked `analogWrite(pin, duty)` instrumentation
 for the Uno's real hardware PWM pins: D3, D5, D6, D9, D10, and D11. The firmware
 captures the driving timer registers and the desktop reconstructs a rectangular
 configured waveform with period, frequency, HIGH/LOW time, duty, timer counter,

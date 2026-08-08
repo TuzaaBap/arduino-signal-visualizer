@@ -366,7 +366,7 @@ export function App() {
               <Metric label="Board" value="Arduino Uno" />
               <Metric label="Firmware" value={firmware} />
               <Metric label="Port" value={status.portName ?? "—"} />
-              <Metric label="App" value="0.4.0" />
+              <Metric label="App" value="0.5.0" />
               <Metric label="Render" value={`${fps} FPS`} />
               <Metric label="Packets" value={`${packetRate}/s`} />
             </div>

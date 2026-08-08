@@ -14,6 +14,7 @@ class ArduinoSignalVisualizer {
   void begin(unsigned long baud = kDefaultBaud);
   void begin(HardwareSerial& serial, unsigned long baud = kDefaultBaud);
   void attach(HardwareSerial& serial);
+  void service();
 
   void pinMode(uint8_t pin, uint8_t mode);
   void digitalWrite(uint8_t pin, uint8_t value);
@@ -50,13 +51,24 @@ class ArduinoSignalVisualizer {
   uint8_t pinModes_[kDigitalPinCount];
   uint8_t analogReferenceMode_;
   uint16_t analogReferenceMillivolts_;
+  uint16_t observedDigitalMask_;
+  uint8_t observedAnalogMask_;
+  uint16_t observedPwmMask_;
+  uint16_t pendingDigitalMask_;
+  uint8_t pendingAnalogMask_;
+  uint16_t pendingPwmMask_;
+  uint16_t lastAnalogValues_[kAnalogChannelCount];
+  uint8_t lastPwmValues_[kDigitalPinCount];
+  bool helloPending_;
 
-  void sendHello();
-  void sendDigital(uint8_t pin, uint8_t level, uint8_t source);
-  void sendAnalog(uint8_t channel, uint16_t rawValue);
-  void sendPwm(uint8_t pin, uint8_t dutyValue);
-  void sendPacket(uint8_t packetType, const uint8_t* payload,
-                  size_t payloadLength);
+  bool sendHello(bool recordDrop = true);
+  bool sendDigital(uint8_t pin, uint8_t level, uint8_t source,
+                   bool recordDrop = true);
+  bool sendAnalog(uint8_t channel, uint16_t rawValue,
+                  bool recordDrop = true);
+  bool sendPwm(uint8_t pin, uint8_t dutyValue, bool recordDrop = true);
+  bool sendPacket(uint8_t packetType, const uint8_t* payload,
+                  size_t payloadLength, bool recordDrop);
   uint8_t wireMode(uint8_t arduinoMode) const;
   uint8_t wireAnalogReferenceMode(uint8_t arduinoMode) const;
   uint16_t defaultAnalogReferenceMillivolts(uint8_t wireMode) const;

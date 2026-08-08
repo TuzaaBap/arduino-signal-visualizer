@@ -9,7 +9,6 @@ constexpr unsigned long kStepDelayMs = 500;
 }  // namespace
 
 void setup() {
-  ASV.begin();
 }
 
 void loop() {

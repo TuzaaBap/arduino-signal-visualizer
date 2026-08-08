@@ -1,7 +1,9 @@
-# Arduino Signal Visualizer 0.4.0 beta
+# Arduino Signal Visualizer 0.5.0 beta
 
-This beta contains the physically validated Arduino Uno GPIO, ADC, configured
-PWM, board LED activity, and transparent text Serial paths.
+This beta makes Arduino Uno instrumentation automatic. Include
+`ASVInstrumented.h`, then write ordinary Arduino `setup()` and `loop()`
+functions. The library owns its internal lifecycle and records supported GPIO,
+ADC, configured PWM, board LED activity, and transparent text Serial traffic.
 
 ## Downloads
 
@@ -10,12 +12,25 @@ PWM, board LED activity, and transparent text Serial paths.
   all-users deployment.
 - macOS Apple silicon: use the `aarch64` DMG.
 - macOS Intel: use the `x86_64` DMG.
-- Arduino IDE: install `ArduinoSignalVisualizer-0.4.0.zip` through
+- Arduino IDE: install `ArduinoSignalVisualizer-0.5.0.zip` through
   **Sketch > Include Library > Add .ZIP Library...**.
 
-Use desktop application 0.4.0 with Arduino library 0.4.0.
-Select the same baud rate in the app that the sketch passed to `Serial.begin`
-or `ASV.begin`.
+Use desktop application 0.5.0 with Arduino library 0.5.0. The library defaults
+to 115200 baud. If the sketch calls `Serial.begin`, its selected rate wins;
+select that same rate in the desktop application.
+
+## Minimal sketch
+
+```cpp
+#include <ASVInstrumented.h>
+
+void setup() {}
+
+void loop() {}
+```
+
+No `ASV.begin`, `ASV.attach`, or `ASV.service` call is needed. Advanced users
+can retain explicit lifecycle control by including `ArduinoSignalVisualizer.h`.
 
 ## Beta signing notice
 

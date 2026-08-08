@@ -10,7 +10,6 @@ bool ledHigh = false;
 
 void setup() {
   Serial.begin(kSerialBaud);
-  ASV.attach(Serial);
   pinMode(kLedPin, OUTPUT);
   Serial.println("Transparent Serial and ASV telemetry are both active.");
 }

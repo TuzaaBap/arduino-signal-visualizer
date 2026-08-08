@@ -15,12 +15,12 @@ One beta tag produces matching artifacts for the same source revision:
 Desktop bundles are built by Tauri on the native operating system. The Arduino
 ZIP is deterministic and has one top-level `ArduinoSignalVisualizer` folder,
 matching the official Arduino library layout. Its install test uses a fresh
-Arduino user directory and compiles all four installed examples.
+Arduino user directory and compiles all five installed examples.
 
 ## Manual beta workflow
 
 The **Beta Release** GitHub Actions workflow requires an explicit tag input such
-as `v0.4.0-beta.1`. The tag must match the version in `library.properties`.
+as `v0.5.0-beta.1`. The tag must match the version in `library.properties`.
 The workflow creates a draft prerelease, then attaches all successful platform
 artifacts. A maintainer reviews the draft and download names before making it
 public.
@@ -51,10 +51,12 @@ and ordinary sketch text share the Uno UART but are decoded into separate
 desktop streams. User text has priority; ASV skips telemetry rather than
 blocking the sketch if the Uno transmit buffer is full.
 
-Existing sketches can keep `Serial.begin(baud)` and then call
-`ASV.attach(Serial)`. New sketches may use `ASV.begin(baud)` as shorthand. The
-desktop connection panel must use that same baud because one physical UART
-cannot operate at two baud rates simultaneously.
+Including `ASVInstrumented.h` enables the automatic lifecycle. It starts Serial
+at 115200 baud by default, then attaches telemetry after the sketch's `setup()`.
+If the sketch calls `Serial.begin(baud)`, that user-selected rate wins. The
+advanced explicit API remains available through `ArduinoSignalVisualizer.h`.
+The desktop connection panel must use the sketch's baud because one physical
+UART cannot operate at two baud rates simultaneously.
 
 The operating-system serial port is exclusive. Arduino IDE Serial Monitor,
 another terminal, and Arduino Signal Visualizer cannot connect simultaneously.
@@ -63,7 +65,7 @@ it on **Disconnect** or application exit, and provides its own Serial tab for
 normal sketch input/output.
 
 Transparent mode supports ordinary text. Strict framing of arbitrary binary
-user traffic is outside the 0.4.0 beta and must not be implied in release copy.
+user traffic is outside the 0.5.0 beta and must not be implied in release copy.
 
 ## Signing status
 

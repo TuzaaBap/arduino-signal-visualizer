@@ -14,9 +14,13 @@ Instrumented Uno sketch + ordinary Serial.print output
   -> bounded React state, Serial Monitor, and interactive Uno SVG
 ```
 
-The Arduino side reports intent, observed return values, and PWM timer-register
-snapshots. The Rust side treats every serial byte as untrusted and is the only
-layer that understands packet layout or derives PWM timing. React only
+The instrumented header automatically owns the outer Arduino lifecycle while
+calling the user's familiar `setup()` and `loop()` internally. It starts ASV,
+captures ordinary Arduino API calls, and retries only pending startup metadata;
+no ASV lifecycle calls appear in the user's sketch. The Arduino side reports
+intent, observed return values, and PWM timer-register snapshots. The Rust side
+treats every serial byte as untrusted and is the only layer that understands
+packet layout or derives PWM timing. React only
 understands typed concepts such as pin, direction, logic level, raw ADC count,
 reference metadata, and validated timer timing. It never parses wire bytes or
 derives a waveform from rounded pin-frequency labels.

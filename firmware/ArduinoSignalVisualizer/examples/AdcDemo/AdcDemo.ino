@@ -12,7 +12,6 @@ unsigned long lastLedMs = 0;
 bool ledHigh = false;
 
 void setup() {
-  ASV.begin();
   analogReference(DEFAULT, 5000);
   pinMode(kLedPin, OUTPUT);
   digitalWrite(kLedPin, LOW);
