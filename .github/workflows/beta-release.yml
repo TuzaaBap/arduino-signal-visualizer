@@ -91,7 +91,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ startsWith(matrix.os, 'macos') && '-' || '' }}
         with:
           projectPath: desktop
-          tauriScript: npm run tauri --
+          tauriScript: npm run tauri
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseDraft: true
           prerelease: true
