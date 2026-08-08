@@ -1,4 +1,4 @@
-#include <ArduinoSignalVisualizer.h>
+#include <ASVInstrumented.h>
 
 namespace {
 
@@ -15,7 +15,7 @@ void setup() {
 void loop() {
   for (uint8_t duty : kDutyValues) {
     for (uint8_t pin : kPwmPins) {
-      ASV.analogWrite(pin, duty);
+      analogWrite(pin, duty);
     }
     delay(kStepDelayMs);
   }

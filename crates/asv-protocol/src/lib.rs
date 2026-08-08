@@ -6,11 +6,14 @@ mod crc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const PROTOCOL_VERSION: u8 = 1;
-pub const HEADER_LEN: usize = 10;
+pub const LEGACY_PROTOCOL_VERSION: u8 = 1;
+pub const PROTOCOL_VERSION: u8 = 2;
+pub const PROTOCOL_MAGIC: [u8; 4] = *b"ASV2";
+pub const LEGACY_HEADER_LEN: usize = 10;
+pub const HEADER_LEN: usize = 14;
 pub const CRC_LEN: usize = 2;
 pub const MAX_DECODED_PACKET_LEN: usize = 128;
-pub const MAX_ENCODED_FRAME_LEN: usize = MAX_DECODED_PACKET_LEN + 2;
+pub const MAX_ENCODED_FRAME_LEN: usize = MAX_DECODED_PACKET_LEN + 3;
 pub const ADC_EVENT_VERSION: u8 = 1;
 pub const PWM_EVENT_VERSION: u8 = 2;
 pub const UNO_ANALOG_CHANNEL_COUNT: u8 = 6;
@@ -44,6 +47,7 @@ impl TryFrom<u8> for PacketType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
+    pub protocol_version: u8,
     pub packet_type: PacketType,
     pub sequence: u16,
     pub board_timestamp_us: u32,
@@ -300,8 +304,18 @@ pub enum ProtocolError {
 }
 
 pub fn encode_packet(packet: &Packet) -> Vec<u8> {
-    let mut decoded = Vec::with_capacity(HEADER_LEN + packet.payload.len() + CRC_LEN);
-    decoded.push(PROTOCOL_VERSION);
+    let header_len = if packet.protocol_version == LEGACY_PROTOCOL_VERSION {
+        LEGACY_HEADER_LEN
+    } else {
+        HEADER_LEN
+    };
+    let mut decoded = Vec::with_capacity(header_len + packet.payload.len() + CRC_LEN);
+    if packet.protocol_version == LEGACY_PROTOCOL_VERSION {
+        decoded.push(LEGACY_PROTOCOL_VERSION);
+    } else {
+        decoded.extend_from_slice(&PROTOCOL_MAGIC);
+        decoded.push(PROTOCOL_VERSION);
+    }
     decoded.push(packet.packet_type as u8);
     decoded.extend_from_slice(&packet.sequence.to_le_bytes());
     decoded.extend_from_slice(&packet.board_timestamp_us.to_le_bytes());
@@ -310,27 +324,61 @@ pub fn encode_packet(packet: &Packet) -> Vec<u8> {
     decoded.extend_from_slice(&crc::crc16_ccitt_false(&decoded).to_le_bytes());
 
     let mut framed = cobs::encode(&decoded);
+    if packet.protocol_version == PROTOCOL_VERSION {
+        framed.insert(0, 0);
+    }
     framed.push(0);
     framed
 }
 
 pub fn decode_frame(encoded_without_delimiter: &[u8]) -> Result<Packet, ProtocolError> {
     let decoded = cobs::decode(encoded_without_delimiter)?;
-    if decoded.len() < HEADER_LEN + CRC_LEN {
+    let (
+        protocol_version,
+        header_len,
+        packet_type_offset,
+        sequence_offset,
+        timestamp_offset,
+        length_offset,
+    ) = if decoded.starts_with(&PROTOCOL_MAGIC) {
+        if decoded.len() < HEADER_LEN + CRC_LEN {
+            return Err(ProtocolError::PacketTooShort {
+                minimum: HEADER_LEN + CRC_LEN,
+            });
+        }
+        if decoded[4] != PROTOCOL_VERSION {
+            return Err(ProtocolError::UnsupportedVersion(decoded[4]));
+        }
+        (PROTOCOL_VERSION, HEADER_LEN, 5, 6, 8, 12)
+    } else {
+        if decoded.len() < LEGACY_HEADER_LEN + CRC_LEN {
+            return Err(ProtocolError::PacketTooShort {
+                minimum: LEGACY_HEADER_LEN + CRC_LEN,
+            });
+        }
+        if decoded[0] != LEGACY_PROTOCOL_VERSION {
+            return Err(ProtocolError::UnsupportedVersion(decoded[0]));
+        }
+        (LEGACY_PROTOCOL_VERSION, LEGACY_HEADER_LEN, 1, 2, 4, 8)
+    };
+
+    if decoded.len() < header_len + CRC_LEN {
         return Err(ProtocolError::PacketTooShort {
-            minimum: HEADER_LEN + CRC_LEN,
+            minimum: header_len + CRC_LEN,
         });
     }
 
-    if decoded[0] != PROTOCOL_VERSION {
-        return Err(ProtocolError::UnsupportedVersion(decoded[0]));
-    }
-
-    let packet_type = PacketType::try_from(decoded[1])?;
-    let sequence = u16::from_le_bytes([decoded[2], decoded[3]]);
-    let board_timestamp_us = u32::from_le_bytes([decoded[4], decoded[5], decoded[6], decoded[7]]);
-    let declared = u16::from_le_bytes([decoded[8], decoded[9]]) as usize;
-    let actual = decoded.len() - HEADER_LEN - CRC_LEN;
+    let packet_type = PacketType::try_from(decoded[packet_type_offset])?;
+    let sequence = u16::from_le_bytes([decoded[sequence_offset], decoded[sequence_offset + 1]]);
+    let board_timestamp_us = u32::from_le_bytes([
+        decoded[timestamp_offset],
+        decoded[timestamp_offset + 1],
+        decoded[timestamp_offset + 2],
+        decoded[timestamp_offset + 3],
+    ]);
+    let declared =
+        u16::from_le_bytes([decoded[length_offset], decoded[length_offset + 1]]) as usize;
+    let actual = decoded.len() - header_len - CRC_LEN;
     if declared != actual {
         return Err(ProtocolError::UnexpectedPayloadLength { declared, actual });
     }
@@ -343,10 +391,11 @@ pub fn decode_frame(encoded_without_delimiter: &[u8]) -> Result<Packet, Protocol
     }
 
     Ok(Packet {
+        protocol_version,
         packet_type,
         sequence,
         board_timestamp_us,
-        payload: decoded[HEADER_LEN..crc_offset].to_vec(),
+        payload: decoded[header_len..crc_offset].to_vec(),
     })
 }
 
@@ -881,6 +930,169 @@ impl StreamDecoder {
             self.encoded.push(byte);
         }
         results
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportItem {
+    Packet(Packet),
+    UserSerial(Vec<u8>),
+    ProtocolError(ProtocolError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportMode {
+    Detecting,
+    LegacyFramed,
+    Multiplexed,
+}
+
+/// Decodes both legacy ASV-only streams and protocol-v2 streams that mix
+/// framed ASV telemetry with ordinary, unmodified user serial bytes.
+#[derive(Debug)]
+pub struct TransportDecoder {
+    mode: TransportMode,
+    encoded: Vec<u8>,
+    in_multiplexed_frame: bool,
+    suppress_initial_fragment_error: bool,
+}
+
+impl Default for TransportDecoder {
+    fn default() -> Self {
+        Self {
+            mode: TransportMode::Detecting,
+            encoded: Vec::new(),
+            in_multiplexed_frame: false,
+            suppress_initial_fragment_error: true,
+        }
+    }
+}
+
+impl TransportDecoder {
+    pub fn push(&mut self, bytes: &[u8]) -> Vec<TransportItem> {
+        let mut items = Vec::new();
+        let mut user_serial = Vec::new();
+
+        for &byte in bytes {
+            match self.mode {
+                TransportMode::Detecting | TransportMode::LegacyFramed => {
+                    self.push_framed_byte(byte, &mut items);
+                }
+                TransportMode::Multiplexed => {
+                    self.push_multiplexed_byte(byte, &mut items, &mut user_serial);
+                }
+            }
+        }
+
+        push_user_serial(&mut items, &mut user_serial);
+        items
+    }
+
+    fn push_framed_byte(&mut self, byte: u8, items: &mut Vec<TransportItem>) {
+        if byte != 0 {
+            if self.encoded.len() == MAX_ENCODED_FRAME_LEN {
+                self.encoded.clear();
+                if !self.suppress_initial_fragment_error {
+                    items.push(TransportItem::ProtocolError(ProtocolError::FrameTooLong));
+                }
+                self.suppress_initial_fragment_error = false;
+                return;
+            }
+            self.encoded.push(byte);
+            return;
+        }
+
+        if self.encoded.is_empty() {
+            return;
+        }
+
+        let decoded = decode_frame(&self.encoded);
+        self.encoded.clear();
+        match decoded {
+            Ok(packet) => {
+                if self.mode == TransportMode::Detecting {
+                    self.mode = if packet.protocol_version == PROTOCOL_VERSION {
+                        TransportMode::Multiplexed
+                    } else {
+                        TransportMode::LegacyFramed
+                    };
+                }
+                items.push(TransportItem::Packet(packet));
+            }
+            Err(error) if !self.suppress_initial_fragment_error => {
+                items.push(TransportItem::ProtocolError(error));
+            }
+            Err(_) => {}
+        }
+        self.suppress_initial_fragment_error = false;
+    }
+
+    fn push_multiplexed_byte(
+        &mut self,
+        byte: u8,
+        items: &mut Vec<TransportItem>,
+        user_serial: &mut Vec<u8>,
+    ) {
+        if !self.in_multiplexed_frame {
+            if byte == 0 {
+                push_user_serial(items, user_serial);
+                self.in_multiplexed_frame = true;
+            } else {
+                user_serial.push(byte);
+            }
+            return;
+        }
+
+        if byte != 0 {
+            self.encoded.push(byte);
+            if self.encoded.len() > MAX_ENCODED_FRAME_LEN {
+                user_serial.push(0);
+                user_serial.append(&mut self.encoded);
+                self.in_multiplexed_frame = false;
+            }
+            return;
+        }
+
+        if self.encoded.is_empty() {
+            // Consecutive zero bytes can be the boundary between back-to-back
+            // ASV frames. Keep the newest zero as the next opening delimiter.
+            self.in_multiplexed_frame = true;
+            return;
+        }
+
+        let candidate_is_v2 = encoded_candidate_has_v2_magic(&self.encoded);
+        let decoded = decode_frame(&self.encoded);
+        match decoded {
+            Ok(packet) if packet.protocol_version == PROTOCOL_VERSION => {
+                push_user_serial(items, user_serial);
+                items.push(TransportItem::Packet(packet));
+                self.encoded.clear();
+                self.in_multiplexed_frame = false;
+            }
+            Err(error) if candidate_is_v2 => {
+                push_user_serial(items, user_serial);
+                items.push(TransportItem::ProtocolError(error));
+                self.encoded.clear();
+                self.in_multiplexed_frame = false;
+            }
+            _ => {
+                user_serial.push(0);
+                user_serial.append(&mut self.encoded);
+                // The closing zero may also be the opening delimiter of the
+                // next ASV frame, so retain it as framing state.
+                self.in_multiplexed_frame = true;
+            }
+        }
+    }
+}
+
+fn encoded_candidate_has_v2_magic(encoded: &[u8]) -> bool {
+    cobs::decode(encoded).is_ok_and(|decoded| decoded.starts_with(&PROTOCOL_MAGIC))
+}
+
+fn push_user_serial(items: &mut Vec<TransportItem>, bytes: &mut Vec<u8>) {
+    if !bytes.is_empty() {
+        items.push(TransportItem::UserSerial(std::mem::take(bytes)));
     }
 }
 

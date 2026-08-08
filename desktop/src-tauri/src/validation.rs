@@ -14,7 +14,7 @@ use crate::{
     connection::{self, ConnectionManager},
     model::{
         AdcSample, ConnectionStatus, DiagnosticCategory, GpioBatch, GpioUpdate, ProtocolDiagnostic,
-        PwmUpdate,
+        PwmUpdate, UserSerialBatch,
     },
 };
 
@@ -44,6 +44,8 @@ struct ValidationSnapshot {
     received_gpio_updates: u64,
     received_adc_samples: u64,
     received_pwm_updates: u64,
+    received_user_serial_bytes: u64,
+    dropped_user_serial_bytes: u64,
     ui_acknowledgements: u64,
     ui_matches_backend: bool,
     ui_adc_acknowledgements: u64,
@@ -127,6 +129,8 @@ impl ValidationRecorder {
                 received_gpio_updates: 0,
                 received_adc_samples: 0,
                 received_pwm_updates: 0,
+                received_user_serial_bytes: 0,
+                dropped_user_serial_bytes: 0,
                 ui_acknowledgements: 0,
                 ui_matches_backend: true,
                 ui_adc_acknowledgements: 0,
@@ -240,6 +244,17 @@ impl ValidationRecorder {
                     .map_or(update.duty_value, |value| value.max(update.duty_value)),
             );
             pin.latest = Some(update);
+        });
+        self.write_report(false);
+    }
+
+    pub fn record_user_serial(&self, batch: &UserSerialBatch) {
+        if !self.enabled() {
+            return;
+        }
+        self.with_state(|state| {
+            state.received_user_serial_bytes += batch.bytes.len() as u64;
+            state.dropped_user_serial_bytes += batch.dropped_bytes;
         });
         self.write_report(false);
     }
@@ -421,6 +436,10 @@ pub fn record_adc_sample(app: &AppHandle, sample: AdcSample) {
 
 pub fn record_pwm_update(app: &AppHandle, update: PwmUpdate) {
     app.state::<ValidationRecorder>().record_pwm_update(update);
+}
+
+pub fn record_user_serial(app: &AppHandle, batch: &UserSerialBatch) {
+    app.state::<ValidationRecorder>().record_user_serial(batch);
 }
 
 pub fn record_diagnostic(app: &AppHandle, diagnostic: ProtocolDiagnostic) {

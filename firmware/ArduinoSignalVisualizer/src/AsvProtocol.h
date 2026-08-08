@@ -6,25 +6,27 @@
 
 namespace asv {
 
-constexpr uint8_t kProtocolVersion = 1;
+constexpr uint8_t kProtocolVersion = 2;
+constexpr uint8_t kProtocolMagic[] = {'A', 'S', 'V', '2'};
+constexpr size_t kProtocolMagicLength = sizeof(kProtocolMagic);
 constexpr uint8_t kBoardHelloPacket = 0x01;
 constexpr uint8_t kDigitalGpioPacket = 0x10;
 constexpr uint8_t kAnalogSamplePacket = 0x11;
 constexpr uint8_t kPwmWritePacket = 0x12;
 constexpr uint8_t kAnalogEventVersion = 1;
 constexpr uint8_t kPwmEventVersion = 2;
-constexpr size_t kHeaderLength = 10;
+constexpr size_t kHeaderLength = 14;
 constexpr size_t kCrcLength = 2;
 constexpr size_t kMaximumPayloadLength = 32;
 constexpr size_t kMaximumDecodedPacketLength =
     kHeaderLength + kMaximumPayloadLength + kCrcLength;
 constexpr size_t kMaximumEncodedFrameLength =
-    kMaximumDecodedPacketLength + 2;
+    kMaximumDecodedPacketLength + 3;
 
 uint16_t crc16CcittFalse(const uint8_t* data, size_t length);
 
-// Returns the complete frame length, including the zero delimiter. Returns zero
-// when the payload or output buffer is too large.
+// Returns the complete frame length, including the leading and trailing zero
+// delimiters. Returns zero when the payload or output buffer is too large.
 size_t encodePacket(uint8_t packetType, uint16_t sequence,
                     uint32_t boardTimestampUs, const uint8_t* payload,
                     size_t payloadLength, uint8_t* output,

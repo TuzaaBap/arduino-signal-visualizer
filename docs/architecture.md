@@ -3,15 +3,15 @@
 ## Data flow
 
 ```text
-Instrumented Uno sketch
-  -> Arduino ASV encoder
-  -> COBS/CRC binary frames
-  -> Rust serial reader
-  -> framing and typed decoder
+Instrumented Uno sketch + ordinary Serial.print output
+  -> Arduino ASV v2 encoder + untouched user bytes on one UART
+  -> zero-delimited COBS/CRC ASV frames mixed with user text
+  -> Rust serial reader and transport demultiplexer
+  -> typed ASV decoder + bounded user Serial stream
   -> bounded delivery queue
   -> recording/validation branch (all validated ADC and PWM events)
   -> 30 Hz GPIO, ADC, and PWM UI batches
-  -> bounded React state and interactive Uno SVG
+  -> bounded React state, Serial Monitor, and interactive Uno SVG
 ```
 
 The Arduino side reports intent, observed return values, and PWM timer-register

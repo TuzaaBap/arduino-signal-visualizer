@@ -72,6 +72,13 @@ pub struct SerialActivityBatch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UserSerialBatch {
+    pub bytes: Vec<u8>,
+    pub dropped_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdcSample {
     pub sequence: u16,
     pub board_timestamp_us: u32,

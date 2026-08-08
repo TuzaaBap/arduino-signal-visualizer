@@ -1,4 +1,4 @@
-#include <ArduinoSignalVisualizer.h>
+#include <ASVInstrumented.h>
 
 constexpr uint8_t kLedPin = LED_BUILTIN;
 constexpr unsigned long kTogglePeriodMs = 500;
@@ -14,14 +14,14 @@ size_t walkingIndex = 0;
 
 void setup() {
   ASV.begin();
-  ASV.pinMode(kLedPin, OUTPUT);
-  ASV.digitalWrite(kLedPin, LOW);
-  ASV.digitalRead(kLedPin);
+  pinMode(kLedPin, OUTPUT);
+  digitalWrite(kLedPin, LOW);
+  digitalRead(kLedPin);
 
   for (size_t index = 0; index < kWalkingPinCount; ++index) {
-    ASV.pinMode(kWalkingPins[index], OUTPUT);
-    ASV.digitalWrite(kWalkingPins[index], LOW);
-    ASV.digitalRead(kWalkingPins[index]);
+    pinMode(kWalkingPins[index], OUTPUT);
+    digitalWrite(kWalkingPins[index], LOW);
+    digitalRead(kWalkingPins[index]);
   }
 }
 
@@ -31,17 +31,17 @@ void loop() {
   if (now - lastToggleMs >= kTogglePeriodMs) {
     lastToggleMs = now;
     ledHigh = !ledHigh;
-    ASV.digitalWrite(kLedPin, ledHigh ? HIGH : LOW);
-    ASV.digitalRead(kLedPin);
+    digitalWrite(kLedPin, ledHigh ? HIGH : LOW);
+    digitalRead(kLedPin);
   }
 
   if (now - lastWalkingMs >= kWalkingPeriodMs) {
     lastWalkingMs = now;
 
-    ASV.digitalWrite(kWalkingPins[walkingIndex], LOW);
-    ASV.digitalRead(kWalkingPins[walkingIndex]);
+    digitalWrite(kWalkingPins[walkingIndex], LOW);
+    digitalRead(kWalkingPins[walkingIndex]);
     walkingIndex = (walkingIndex + 1) % kWalkingPinCount;
-    ASV.digitalWrite(kWalkingPins[walkingIndex], HIGH);
-    ASV.digitalRead(kWalkingPins[walkingIndex]);
+    digitalWrite(kWalkingPins[walkingIndex], HIGH);
+    digitalRead(kWalkingPins[walkingIndex]);
   }
 }

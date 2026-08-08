@@ -1,4 +1,4 @@
-#include <ArduinoSignalVisualizer.h>
+#include <ASVInstrumented.h>
 
 constexpr uint8_t kLedPin = LED_BUILTIN;
 constexpr uint8_t kAnalogPins[] = {A0, A1, A2, A3, A4, A5};
@@ -13,10 +13,10 @@ bool ledHigh = false;
 
 void setup() {
   ASV.begin();
-  ASV.analogReference(DEFAULT, 5000);
-  ASV.pinMode(kLedPin, OUTPUT);
-  ASV.digitalWrite(kLedPin, LOW);
-  ASV.digitalRead(kLedPin);
+  analogReference(DEFAULT, 5000);
+  pinMode(kLedPin, OUTPUT);
+  digitalWrite(kLedPin, LOW);
+  digitalRead(kLedPin);
 }
 
 void loop() {
@@ -25,14 +25,14 @@ void loop() {
   if (now - lastSampleMs >= kSamplePeriodMs) {
     lastSampleMs = now;
     for (size_t index = 0; index < kAnalogPinCount; ++index) {
-      ASV.analogRead(kAnalogPins[index]);
+      analogRead(kAnalogPins[index]);
     }
   }
 
   if (now - lastLedMs >= kLedPeriodMs) {
     lastLedMs = now;
     ledHigh = !ledHigh;
-    ASV.digitalWrite(kLedPin, ledHigh ? HIGH : LOW);
-    ASV.digitalRead(kLedPin);
+    digitalWrite(kLedPin, ledHigh ? HIGH : LOW);
+    digitalRead(kLedPin);
   }
 }

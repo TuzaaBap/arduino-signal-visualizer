@@ -406,7 +406,7 @@ button:focus-visible,
 
 .board-workspace {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   min-width: 0;
   padding: 28px 32px 20px;
   background-image:
@@ -458,6 +458,114 @@ button:focus-visible,
 .board-workspace--pwm .board-content {
   grid-template-rows: minmax(280px, 1fr) auto;
   gap: 12px;
+}
+
+.board-workspace--serial .board-content {
+  min-height: 0;
+}
+
+.serial-monitor {
+  display: grid;
+  min-height: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgb(8 15 20 / 88%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.serial-monitor-toolbar,
+.serial-monitor-status,
+.serial-monitor-actions {
+  display: flex;
+  align-items: center;
+}
+
+.serial-monitor-toolbar,
+.serial-monitor-status {
+  justify-content: space-between;
+}
+
+.serial-monitor-toolbar h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.serial-monitor-actions {
+  gap: 6px;
+}
+
+.serial-monitor-actions button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: #101a21;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.serial-monitor-actions button.active {
+  border-color: var(--teal-bright);
+  color: #071719;
+  background: var(--teal-bright);
+}
+
+.serial-monitor-output {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #263942;
+  border-radius: 8px;
+  margin: 0;
+  color: #d9f3ed;
+  background: #050b0f;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.serial-monitor-status {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.serial-monitor-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+
+.serial-monitor-input input,
+.serial-monitor-input select,
+.serial-monitor-input button {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: #101a21;
+  font: inherit;
+}
+
+.serial-monitor-input button {
+  color: #071719;
+  background: var(--teal-bright);
+  font-weight: 750;
+}
+
+.serial-monitor-input :disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.serial-monitor-error {
+  margin: 0;
+  color: var(--red);
+  font-size: 10px;
 }
 
 .board-and-summary {

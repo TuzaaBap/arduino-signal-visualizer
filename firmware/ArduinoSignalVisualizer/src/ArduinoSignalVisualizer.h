@@ -20,7 +20,7 @@ class ArduinoSignalVisualizer {
   void analogReference(uint8_t mode);
   void analogReference(uint8_t mode, uint16_t referenceMillivolts);
   int analogRead(uint8_t pin);
-  bool analogWrite(uint8_t pin, int value);
+  void analogWrite(uint8_t pin, int value);
 
  private:
   struct PwmTimerSnapshot {
@@ -44,7 +44,7 @@ class ArduinoSignalVisualizer {
   static constexpr uint8_t kUnknownMode = 0xff;
   static constexpr uint8_t kUnknownAnalogChannel = 0xff;
 
-  Stream* transport_;
+  HardwareSerial* transport_;
   uint16_t sequence_;
   uint8_t pinModes_[kDigitalPinCount];
   uint8_t analogReferenceMode_;

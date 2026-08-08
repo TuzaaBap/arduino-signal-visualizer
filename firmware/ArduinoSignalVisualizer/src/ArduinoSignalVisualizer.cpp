@@ -72,22 +72,25 @@ int ArduinoSignalVisualizer::analogRead(uint8_t pin) {
   return value;
 }
 
-bool ArduinoSignalVisualizer::analogWrite(uint8_t pin, int value) {
-  if (!isPwmPin(pin) || value < 0 || value > 255) {
-    return false;
+void ArduinoSignalVisualizer::analogWrite(uint8_t pin, int value) {
+  ::analogWrite(pin, value);
+  if (pin >= kDigitalPinCount) {
+    return;
   }
 
-  ::analogWrite(pin, value);
   pinModes_[pin] = wireMode(OUTPUT);
-  sendPwm(pin, static_cast<uint8_t>(value));
-  return true;
+  if (isPwmPin(pin) && value >= 0 && value <= 255) {
+    sendPwm(pin, static_cast<uint8_t>(value));
+  } else if (!isPwmPin(pin)) {
+    sendDigital(pin, static_cast<uint8_t>(value < 128 ? LOW : HIGH), 0);
+  }
 }
 
 void ArduinoSignalVisualizer::sendHello() {
   const uint8_t payload[] = {
       1,     // Arduino Uno R3
-      0, 3, 0,  // firmware 0.3.0
-      7, 0,  // digital GPIO, ADC, and PWM capabilities
+      0, 4, 0,  // firmware 0.4.0
+      15, 0,  // digital GPIO, ADC, PWM, and transparent Serial capabilities
       0,     // reset cause is unknown in the portable v1 implementation
       0x88, 0x13,  // 5000 mV
   };
@@ -159,14 +162,21 @@ void ArduinoSignalVisualizer::sendPacket(uint8_t packetType,
   }
 
   uint8_t frame[asv::kMaximumEncodedFrameLength];
+  const uint16_t packetSequence = sequence_++;
   const size_t frameLength =
-      asv::encodePacket(packetType, sequence_, micros(), payload, payloadLength,
+      asv::encodePacket(packetType, packetSequence, micros(), payload, payloadLength,
                         frame, sizeof(frame));
   if (frameLength == 0) {
     return;
   }
+
+  // HardwareSerial has a small fixed transmit buffer on the Uno. Never block
+  // the sketch behind instrumentation; a sequence gap tells the desktop that
+  // telemetry was skipped while user Serial output had priority.
+  if (transport_->availableForWrite() < static_cast<int>(frameLength)) {
+    return;
+  }
   transport_->write(frame, frameLength);
-  ++sequence_;
 }
 
 uint8_t ArduinoSignalVisualizer::wireMode(uint8_t arduinoMode) const {

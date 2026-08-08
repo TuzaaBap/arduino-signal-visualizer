@@ -1,5 +1,12 @@
 # Shared protocol vectors
 
+Files prefixed with `v2-` use the production multiplexed envelope: a leading
+`00`, COBS-encoded `ASV2` magic, protocol version 2 header and payload, CRC-16,
+and a trailing `00`. These vectors are shared by the Rust decoder and the C++
+firmware encoder.
+
+The original unprefixed files remain as protocol-v1 compatibility fixtures.
+
 `digital-write-d13-high.hex` represents:
 
 - protocol version 1

@@ -81,11 +81,14 @@ size_t encodePacket(uint8_t packetType, uint16_t sequence,
   }
 
   uint8_t decoded[kMaximumDecodedPacketLength];
-  decoded[0] = kProtocolVersion;
-  decoded[1] = packetType;
-  appendU16(decoded, 2, sequence);
-  appendU32(decoded, 4, boardTimestampUs);
-  appendU16(decoded, 8, static_cast<uint16_t>(payloadLength));
+  for (size_t index = 0; index < kProtocolMagicLength; ++index) {
+    decoded[index] = kProtocolMagic[index];
+  }
+  decoded[4] = kProtocolVersion;
+  decoded[5] = packetType;
+  appendU16(decoded, 6, sequence);
+  appendU32(decoded, 8, boardTimestampUs);
+  appendU16(decoded, 12, static_cast<uint16_t>(payloadLength));
   for (size_t index = 0; index < payloadLength; ++index) {
     decoded[kHeaderLength + index] = payload[index];
   }
@@ -93,14 +96,17 @@ size_t encodePacket(uint8_t packetType, uint16_t sequence,
   const size_t crcOffset = kHeaderLength + payloadLength;
   appendU16(decoded, crcOffset, crc16CcittFalse(decoded, crcOffset));
   const size_t decodedLength = crcOffset + kCrcLength;
-  const size_t encodedLength =
-      cobsEncode(decoded, decodedLength, output, outputCapacity);
-  if (encodedLength == 0 || encodedLength >= outputCapacity) {
+  if (outputCapacity < 3) {
     return 0;
   }
-  output[encodedLength] = 0;
-  return encodedLength + 1;
+  output[0] = 0;
+  const size_t encodedLength =
+      cobsEncode(decoded, decodedLength, output + 1, outputCapacity - 2);
+  if (encodedLength == 0 || encodedLength + 1 >= outputCapacity) {
+    return 0;
+  }
+  output[encodedLength + 1] = 0;
+  return encodedLength + 2;
 }
 
 }  // namespace asv
-

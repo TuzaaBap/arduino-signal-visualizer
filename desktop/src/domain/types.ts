@@ -49,6 +49,11 @@ export interface SerialActivityBatch {
   pulseDurationMs: number;
 }
 
+export interface UserSerialBatch {
+  bytes: number[];
+  droppedBytes: number;
+}
+
 export type AdcReferenceMode = "default" | "internal" | "external";
 
 export interface AdcSample {

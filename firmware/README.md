@@ -1,32 +1,57 @@
 # Arduino firmware library
 
-The library instruments operations explicitly called through `ASV`. It neither
-simulates hardware nor observes unrelated calls made directly through the
-Arduino core.
+The product-facing header lets sketches keep ordinary Arduino function names
+while ASV reports the operations to the desktop. Include third-party headers
+first and `ASVInstrumented.h` last:
 
 ## Instrumentation API
 
 ```cpp
-ASV.begin();
-ASV.pinMode(13, OUTPUT);
-ASV.digitalWrite(13, HIGH);
-int level = ASV.digitalRead(7);
-int raw = ASV.analogRead(A0);
-bool accepted = ASV.analogWrite(9, 128);
+#include <ASVInstrumented.h>
+
+void setup() {
+  ASV.begin(115200);
+  pinMode(13, OUTPUT);
+  Serial.println("Normal user Serial output");
+}
+
+void loop() {
+  digitalWrite(13, HIGH);
+  delay(1000);
+  digitalWrite(13, LOW);
+  delay(1000);
+}
 ```
 
-The API follows the standard Arduino names to make migration visible and
-mechanical.
+The header redirects sketch calls to `pinMode`, `digitalWrite`, `digitalRead`,
+`analogReference`, `analogRead`, and `analogWrite`. The underlying Arduino core
+and separately compiled third-party libraries are unchanged. The explicit
+`ArduinoSignalVisualizer.h` header remains available when `ASV.digitalWrite()`
+style calls are preferred.
 
-`ASV.analogRead()` returns the Arduino core result unchanged, then reports the
+## Shared UART and normal Serial output
+
+Protocol v2 puts ASV telemetry inside signed, COBS-encoded, CRC-protected frames
+with explicit start and end delimiters. Normal `Serial.print()` bytes remain
+untouched. The desktop separates the two streams and shows only the user's raw
+bytes in the Serial Monitor tab.
+
+Desktop Serial Monitor input is written as raw bytes, so ordinary
+`Serial.available()` and `Serial.read()` continue to work. ASV control commands
+do not share the desktop-to-board direction in this version.
+
+ASV telemetry never waits behind a full Uno transmit buffer. The student's
+Serial output has priority; skipped instrumentation appears as a protocol
+sequence gap instead of changing sketch timing.
+
+Instrumented `analogRead()` returns the Arduino core result unchanged, then reports the
 channel, raw count, resolution, reference mode, integer reference millivolts,
 and board timestamp. The Uno does not calculate or transmit floating-point
 voltage values.
 
-`ASV.analogWrite()` accepts only the Uno's real hardware PWM pins D3, D5, D6,
-D9, D10, and D11 and values from 0 through 255. It returns `false` without
-changing hardware or transmitting an event when either argument is invalid.
-Valid calls report the requested integer duty count plus a snapshot of the
+Instrumented `analogWrite()` preserves the Arduino core behavior on every pin.
+Calls on the Uno's real hardware PWM pins D3, D5, D6, D9, D10, and D11 report
+the requested integer duty count plus a snapshot of the
 ATmega328P timer that drives the pin: timer/channel, waveform mode, polarity,
 source clock, prescaler, TOP, output compare, counter, and raw control
 registers. Duty endpoints are reported as constant LOW or HIGH because Arduino
@@ -59,6 +84,13 @@ Compile the Milestone 3 PWM example:
 arduino-cli compile --fqbn arduino:avr:uno `
   --library firmware/ArduinoSignalVisualizer `
   firmware/examples/PwmDemo
+```
+
+Compile the transparent Serial example:
+
+```powershell
+platformio run --project-conf platformio-serial.ini `
+  -e uno_transparent_serial_demo
 ```
 
 PlatformIO keeps the two build and upload targets explicit:

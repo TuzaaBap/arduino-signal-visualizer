@@ -7,8 +7,18 @@ fn parse_hex(input: &str) -> Vec<u8> {
         .collect()
 }
 
+fn frame_body(frame: &[u8]) -> &[u8] {
+    assert_eq!(frame.last(), Some(&0), "frame has a trailing delimiter");
+    if frame.first() == Some(&0) {
+        &frame[1..frame.len() - 1]
+    } else {
+        &frame[..frame.len() - 1]
+    }
+}
+
 fn adc_packet(payload: Vec<u8>) -> Packet {
     Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::AnalogSample,
         sequence: 0x2345,
         board_timestamp_us: 0x1122_3344,
@@ -18,6 +28,7 @@ fn adc_packet(payload: Vec<u8>) -> Packet {
 
 fn pwm_packet(payload: Vec<u8>) -> Packet {
     Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::PwmWrite,
         sequence: 0x3456,
         board_timestamp_us: 0x5566_7788,
@@ -65,12 +76,10 @@ fn d9_pwm_payload(duty: u16) -> Vec<u8> {
 #[test]
 fn shared_gpio_vector_decodes_and_reencodes() {
     let vector = parse_hex(include_str!(
-        "../../../protocol/test-vectors/digital-write-d13-high.hex"
+        "../../../protocol/test-vectors/v2-digital-write-d13-high.hex"
     ));
-    let (delimiter, encoded) = vector.split_last().expect("vector is non-empty");
-    assert_eq!(*delimiter, 0);
-
-    let packet = decode_frame(encoded).expect("shared vector decodes");
+    let packet = decode_frame(frame_body(&vector)).expect("shared vector decodes");
+    assert_eq!(packet.protocol_version, PROTOCOL_VERSION);
     assert_eq!(packet.sequence, 0x1234);
     assert_eq!(packet.board_timestamp_us, 0x0102_0304);
     assert_eq!(packet.payload, [13, 1, 1, 0]);
@@ -92,12 +101,10 @@ fn shared_gpio_vector_decodes_and_reencodes() {
 #[test]
 fn shared_adc_vector_decodes_and_reencodes() {
     let vector = parse_hex(include_str!(
-        "../../../protocol/test-vectors/analog-a0-midscale.hex"
+        "../../../protocol/test-vectors/v2-analog-a0-midscale.hex"
     ));
-    let (delimiter, encoded) = vector.split_last().expect("vector is non-empty");
-    assert_eq!(*delimiter, 0);
-
-    let packet = decode_frame(encoded).expect("shared ADC vector decodes");
+    let packet = decode_frame(frame_body(&vector)).expect("shared ADC vector decodes");
+    assert_eq!(packet.protocol_version, PROTOCOL_VERSION);
     assert_eq!(packet.sequence, 0x2345);
     assert_eq!(packet.board_timestamp_us, 0x1122_3344);
     assert_eq!(packet.payload, [1, 0, 0, 2, 10, 0, 0x88, 0x13]);
@@ -119,12 +126,10 @@ fn shared_adc_vector_decodes_and_reencodes() {
 #[test]
 fn shared_pwm_vector_decodes_and_reencodes() {
     let vector = parse_hex(include_str!(
-        "../../../protocol/test-vectors/pwm-d9-half-duty.hex"
+        "../../../protocol/test-vectors/v2-pwm-d9-half-duty.hex"
     ));
-    let (delimiter, encoded) = vector.split_last().expect("vector is non-empty");
-    assert_eq!(*delimiter, 0);
-
-    let packet = decode_frame(encoded).expect("shared PWM vector decodes");
+    let packet = decode_frame(frame_body(&vector)).expect("shared PWM vector decodes");
+    assert_eq!(packet.protocol_version, PROTOCOL_VERSION);
     assert_eq!(packet.sequence, 0x3456);
     assert_eq!(packet.board_timestamp_us, 0x5566_7788);
     assert_eq!(packet.payload, d9_pwm_payload(128));
@@ -172,6 +177,7 @@ fn shared_pwm_vector_decodes_and_reencodes() {
 #[test]
 fn fragmented_stream_emits_only_at_delimiter() {
     let packet = Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::DigitalGpio,
         sequence: 4,
         board_timestamp_us: 99,
@@ -185,8 +191,167 @@ fn fragmented_stream_emits_only_at_delimiter() {
 }
 
 #[test]
+fn protocol_v2_uses_explicit_start_and_end_delimiters() {
+    let packet = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::DigitalGpio,
+        sequence: 7,
+        board_timestamp_us: 42,
+        payload: vec![13, 1, 1, 0],
+    };
+
+    let frame = encode_packet(&packet);
+    assert_eq!(frame.first(), Some(&0));
+    assert_eq!(frame.last(), Some(&0));
+    assert_eq!(decode_frame(frame_body(&frame)), Ok(packet));
+}
+
+#[test]
+fn transport_decoder_separates_normal_serial_text_from_v2_packets() {
+    let hello = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::BoardHello,
+        sequence: 0,
+        board_timestamp_us: 10,
+        payload: vec![1, 0, 4, 0, 7, 0, 0, 0x88, 0x13],
+    };
+    let gpio = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::DigitalGpio,
+        sequence: 1,
+        board_timestamp_us: 20,
+        payload: vec![13, 1, 1, 0],
+    };
+    let mut decoder = TransportDecoder::default();
+
+    assert_eq!(
+        decoder.push(&encode_packet(&hello)),
+        [TransportItem::Packet(hello)]
+    );
+    assert_eq!(
+        decoder.push(b"Hello from the sketch\r\n"),
+        [TransportItem::UserSerial(
+            b"Hello from the sketch\r\n".to_vec()
+        )]
+    );
+    assert_eq!(
+        decoder.push(&encode_packet(&gpio)),
+        [TransportItem::Packet(gpio)]
+    );
+}
+
+#[test]
+fn transport_decoder_accepts_fragmented_v2_frames() {
+    let hello = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::BoardHello,
+        sequence: 0,
+        board_timestamp_us: 10,
+        payload: vec![1, 0, 4, 0, 7, 0, 0, 0x88, 0x13],
+    };
+    let frame = encode_packet(&hello);
+    let mut decoder = TransportDecoder::default();
+
+    assert!(decoder.push(&frame[..5]).is_empty());
+    assert_eq!(decoder.push(&frame[5..]), [TransportItem::Packet(hello)]);
+}
+
+#[test]
+fn transport_decoder_reports_corrupt_v2_frame_and_recovers_user_text() {
+    let hello = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::BoardHello,
+        sequence: 0,
+        board_timestamp_us: 10,
+        payload: vec![1, 0, 4, 0, 15, 0, 0, 0x88, 0x13],
+    };
+    let gpio = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::DigitalGpio,
+        sequence: 1,
+        board_timestamp_us: 20,
+        payload: vec![13, 1, 1, 0],
+    };
+    let mut decoder = TransportDecoder::default();
+    assert_eq!(
+        decoder.push(&encode_packet(&hello)),
+        [TransportItem::Packet(hello)]
+    );
+
+    let encoded = encode_packet(&gpio);
+    let mut decoded = cobs::decode(frame_body(&encoded)).expect("valid test packet");
+    decoded[HEADER_LEN] ^= 0x01;
+    let mut corrupt = vec![0];
+    corrupt.extend_from_slice(&cobs::encode(&decoded));
+    corrupt.push(0);
+    let items = decoder.push(&corrupt);
+    assert_eq!(items.len(), 1);
+    assert!(matches!(items[0], TransportItem::ProtocolError(_)));
+    assert_eq!(
+        decoder.push(b"still visible\r\n"),
+        [TransportItem::UserSerial(b"still visible\r\n".to_vec())]
+    );
+}
+
+#[test]
+fn transport_decoder_accepts_back_to_back_v2_packets() {
+    let first = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::BoardHello,
+        sequence: 0,
+        board_timestamp_us: 10,
+        payload: vec![1, 0, 4, 0, 15, 0, 0, 0x88, 0x13],
+    };
+    let second = Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::DigitalGpio,
+        sequence: 1,
+        board_timestamp_us: 20,
+        payload: vec![13, 1, 1, 0],
+    };
+    let mut wire = encode_packet(&first);
+    wire.extend_from_slice(&encode_packet(&second));
+
+    let mut decoder = TransportDecoder::default();
+    assert_eq!(
+        decoder.push(&wire),
+        [TransportItem::Packet(first), TransportItem::Packet(second)]
+    );
+}
+
+#[test]
+fn transport_decoder_keeps_legacy_v1_compatibility() {
+    let packet = Packet {
+        protocol_version: LEGACY_PROTOCOL_VERSION,
+        packet_type: PacketType::DigitalGpio,
+        sequence: 3,
+        board_timestamp_us: 4,
+        payload: vec![13, 1, 0, 0],
+    };
+    let mut decoder = TransportDecoder::default();
+
+    assert_eq!(
+        decoder.push(&encode_packet(&packet)),
+        [TransportItem::Packet(packet)]
+    );
+}
+
+#[test]
+fn legacy_shared_gpio_vector_still_decodes() {
+    let vector = parse_hex(include_str!(
+        "../../../protocol/test-vectors/digital-write-d13-high.hex"
+    ));
+    let packet = decode_frame(frame_body(&vector)).expect("legacy vector decodes");
+
+    assert_eq!(packet.protocol_version, LEGACY_PROTOCOL_VERSION);
+    assert_eq!(packet.packet_type, PacketType::DigitalGpio);
+    assert_eq!(packet.sequence, 0x1234);
+}
+
+#[test]
 fn resynchronizing_stream_discards_only_an_initial_partial_frame() {
     let packet = Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::DigitalGpio,
         sequence: 4,
         board_timestamp_us: 99,
@@ -203,6 +368,7 @@ fn resynchronizing_stream_discards_only_an_initial_partial_frame() {
 #[test]
 fn corrupted_frame_is_rejected_without_losing_the_next_frame() {
     let packet = Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::DigitalGpio,
         sequence: 1,
         board_timestamp_us: 2,
@@ -223,6 +389,7 @@ fn corrupted_frame_is_rejected_without_losing_the_next_frame() {
 #[test]
 fn sequence_tracker_reports_gap_duplicate_and_reset() {
     let packet = |packet_type, sequence| Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type,
         sequence,
         board_timestamp_us: 0,
@@ -258,14 +425,15 @@ fn overlong_frame_is_discarded_through_delimiter() {
 #[test]
 fn unsupported_version_is_rejected_before_payload_decoding() {
     let packet = Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::DigitalGpio,
         sequence: 1,
         board_timestamp_us: 2,
         payload: vec![13, 1, 1, 0],
     };
     let framed = encode_packet(&packet);
-    let mut decoded = cobs::decode(&framed[..framed.len() - 1]).expect("valid COBS");
-    decoded[0] = PROTOCOL_VERSION + 1;
+    let mut decoded = cobs::decode(frame_body(&framed)).expect("valid COBS");
+    decoded[4] = PROTOCOL_VERSION + 1;
     let encoded = cobs::encode(&decoded);
     assert_eq!(
         decode_frame(&encoded),
@@ -276,14 +444,15 @@ fn unsupported_version_is_rejected_before_payload_decoding() {
 #[test]
 fn declared_length_must_exactly_match_frame() {
     let packet = Packet {
+        protocol_version: PROTOCOL_VERSION,
         packet_type: PacketType::DigitalGpio,
         sequence: 1,
         board_timestamp_us: 2,
         payload: vec![13, 1, 1, 0],
     };
     let framed = encode_packet(&packet);
-    let mut decoded = cobs::decode(&framed[..framed.len() - 1]).expect("valid COBS");
-    decoded[8..10].copy_from_slice(&5_u16.to_le_bytes());
+    let mut decoded = cobs::decode(frame_body(&framed)).expect("valid COBS");
+    decoded[12..14].copy_from_slice(&5_u16.to_le_bytes());
     let crc_offset = decoded.len() - CRC_LEN;
     let crc = crc::crc16_ccitt_false(&decoded[..crc_offset]);
     decoded[crc_offset..].copy_from_slice(&crc.to_le_bytes());
@@ -359,7 +528,7 @@ fn adc_raw_count_must_fit_declared_resolution() {
 fn adc_crc_corruption_is_rejected() {
     let packet = adc_packet(vec![1, 0, 0, 2, 10, 0, 0x88, 0x13]);
     let framed = encode_packet(&packet);
-    let mut decoded = cobs::decode(&framed[..framed.len() - 1]).expect("valid COBS");
+    let mut decoded = cobs::decode(frame_body(&framed)).expect("valid COBS");
     let payload_byte = HEADER_LEN + 2;
     decoded[payload_byte] ^= 0x01;
 
@@ -663,7 +832,7 @@ fn fast_pwm_uses_top_plus_one_timer_ticks() {
 fn pwm_crc_corruption_is_rejected() {
     let packet = pwm_packet(d9_pwm_payload(128));
     let framed = encode_packet(&packet);
-    let mut decoded = cobs::decode(&framed[..framed.len() - 1]).expect("valid COBS");
+    let mut decoded = cobs::decode(frame_body(&framed)).expect("valid COBS");
     decoded[HEADER_LEN + 2] ^= 0x01;
 
     assert!(matches!(

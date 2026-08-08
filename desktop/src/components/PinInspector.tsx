@@ -14,9 +14,9 @@ const directionLabel: Record<GpioUpdate["direction"], string> = {
 };
 
 const sourceLabel: Record<GpioUpdate["source"], string> = {
-  write: "ASV.digitalWrite",
-  read: "ASV.digitalRead",
-  modeChange: "ASV.pinMode",
+  write: "digitalWrite (instrumented)",
+  read: "digitalRead (instrumented)",
+  modeChange: "pinMode (instrumented)",
 };
 
 export function PinInspector({
@@ -78,4 +78,3 @@ export function PinInspector({
     </aside>
   );
 }
-

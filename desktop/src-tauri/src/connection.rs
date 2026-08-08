@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, VecDeque},
-    io::{ErrorKind, Read},
+    io::{ErrorKind, Read, Write},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -13,7 +13,7 @@ use std::{
 use asv_protocol::{
     BoardDescriptor, GpioDirection, GpioLevel, GpioObservationSource, Packet, PacketType,
     ProtocolEvent, PwmOutputMode, PwmOutputPolarity, PwmTimerChannel, PwmWaveformMode,
-    SequenceObservation, SequenceTracker, StreamDecoder, derive_pwm_timing,
+    SequenceObservation, SequenceTracker, TransportDecoder, TransportItem, derive_pwm_timing,
 };
 use serialport::{SerialPort, SerialPortType};
 use tauri::{AppHandle, Emitter, State};
@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter, State};
 use crate::model::{
     AdcBatch, AdcSample, ConnectionMode, ConnectionPhase, ConnectionStatus, DiagnosticCategory,
     GpioBatch, GpioUpdate, ProtocolDiagnostic, PwmBatch, PwmUpdate, SerialActivityBatch,
-    SerialPortDescriptor,
+    SerialPortDescriptor, UserSerialBatch,
 };
 use crate::validation;
 
@@ -29,16 +29,21 @@ const EVENT_CONNECTION_STATUS: &str = "asv://connection-status";
 const EVENT_BOARD_INFO: &str = "asv://board-info";
 const EVENT_GPIO_BATCH: &str = "asv://gpio-batch";
 const EVENT_SERIAL_ACTIVITY: &str = "asv://serial-activity";
+const EVENT_USER_SERIAL: &str = "asv://user-serial";
 const EVENT_ADC_BATCH: &str = "asv://adc-batch";
 const EVENT_PWM_BATCH: &str = "asv://pwm-batch";
 const EVENT_DIAGNOSTIC: &str = "asv://protocol-diagnostic";
 const UI_QUEUE_CAPACITY: usize = 256;
 const UI_FLUSH_INTERVAL: Duration = Duration::from_millis(33);
 const ADC_UI_PENDING_PER_CHANNEL: usize = 64;
+const USER_SERIAL_UI_CAPACITY: usize = 8 * 1024;
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
 // Use a short activity envelope so burst boundaries remain visible in the UI.
 // This represents observed USB-serial activity, not individual UART bits.
 const USB_SERIAL_LED_PULSE_MS: u16 = 100;
+
+type SharedSerialWriter = Arc<Mutex<Box<dyn SerialPort>>>;
+type SerialWriterHandle = (SharedSerialWriter, Arc<SerialActivityCounters>);
 
 #[derive(Default)]
 pub struct ConnectionManager {
@@ -48,10 +53,21 @@ pub struct ConnectionManager {
 struct ActiveConnection {
     stop: Arc<AtomicBool>,
     handles: Vec<JoinHandle<()>>,
+    serial_writer: Option<SharedSerialWriter>,
+    serial_activity: Option<Arc<SerialActivityCounters>>,
+}
+
+struct DeliveryContext {
+    dropped: Arc<AtomicU64>,
+    mode: ConnectionMode,
+    port_name: Option<String>,
+    serial_activity: Option<Arc<SerialActivityCounters>>,
+    dropped_user_serial: Option<Arc<AtomicU64>>,
 }
 
 enum SourceMessage {
     Event(ProtocolEvent),
+    UserSerial(Vec<u8>),
     Diagnostic(ProtocolDiagnostic),
 }
 
@@ -64,6 +80,11 @@ struct SerialActivityCounters {
 impl SerialActivityCounters {
     fn record_tx(&self, byte_count: usize) {
         self.tx_bytes
+            .fetch_add(byte_count as u64, Ordering::Relaxed);
+    }
+
+    fn record_rx(&self, byte_count: usize) {
+        self.rx_bytes
             .fetch_add(byte_count as u64, Ordering::Relaxed);
     }
 
@@ -171,9 +192,34 @@ pub(crate) fn connect_serial_inner(
     };
     let _ = port.write_data_terminal_ready(true);
 
-    let active = start_serial_workers(app, port, port_name);
+    let active = start_serial_workers(app, port, port_name)?;
     manager.replace(active);
     Ok(())
+}
+
+#[tauri::command]
+pub fn write_user_serial(
+    bytes: Vec<u8>,
+    manager: State<'_, ConnectionManager>,
+) -> Result<usize, String> {
+    if bytes.is_empty() {
+        return Ok(0);
+    }
+    if bytes.len() > 256 {
+        return Err("User serial writes are limited to 256 bytes".to_owned());
+    }
+
+    let (writer, activity) = manager
+        .serial_writer()
+        .ok_or_else(|| "No physical serial connection is active".to_owned())?;
+    let mut writer = writer
+        .lock()
+        .map_err(|_| "Serial writer mutex is poisoned".to_owned())?;
+    writer
+        .write_all(&bytes)
+        .map_err(|error| format!("Could not write user serial bytes: {error}"))?;
+    activity.record_rx(bytes.len());
+    Ok(bytes.len())
 }
 
 #[tauri::command]
@@ -224,6 +270,14 @@ impl ConnectionManager {
             }
         }
     }
+
+    fn serial_writer(&self) -> Option<SerialWriterHandle> {
+        let active = self.active.lock().ok()?;
+        Some((
+            Arc::clone(active.as_ref()?.serial_writer.as_ref()?),
+            Arc::clone(active.as_ref()?.serial_activity.as_ref()?),
+        ))
+    }
 }
 
 impl Drop for ConnectionManager {
@@ -243,20 +297,27 @@ fn start_serial_workers(
     app: AppHandle,
     mut port: Box<dyn SerialPort>,
     port_name: String,
-) -> ActiveConnection {
+) -> Result<ActiveConnection, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let dropped = Arc::new(AtomicU64::new(0));
+    let dropped_user_serial = Arc::new(AtomicU64::new(0));
     let serial_activity = Arc::new(SerialActivityCounters::default());
+    let active_serial_activity = Arc::clone(&serial_activity);
+    let serial_writer = port.try_clone().map_err(|error| {
+        format!("Could not clone {port_name} for Serial Monitor output: {error}")
+    })?;
+    let serial_writer = Arc::new(Mutex::new(serial_writer));
     let (sender, receiver) = mpsc::sync_channel(UI_QUEUE_CAPACITY);
 
     let reader_stop = Arc::clone(&stop);
     let reader_dropped = Arc::clone(&dropped);
+    let reader_dropped_user_serial = Arc::clone(&dropped_user_serial);
     let reader_port_name = port_name.clone();
     let reader_app = app.clone();
     let reader_serial_activity = Arc::clone(&serial_activity);
     let reader = thread::spawn(move || {
         let mut bytes = [0_u8; 256];
-        let mut decoder = StreamDecoder::resynchronizing();
+        let mut decoder = TransportDecoder::default();
         let mut tracker = SequenceTracker::default();
         let mut handshake_complete = false;
 
@@ -265,9 +326,9 @@ fn start_serial_workers(
                 Ok(count) if count > 0 => {
                     // A successful desktop read means the Uno USB bridge transmitted these bytes.
                     reader_serial_activity.record_tx(count);
-                    for result in decoder.push(&bytes[..count]) {
-                        match result {
-                            Ok(packet)
+                    for item in decoder.push(&bytes[..count]) {
+                        match item {
+                            TransportItem::Packet(packet)
                                 if handshake_complete
                                     || packet.packet_type == PacketType::BoardHello =>
                             {
@@ -280,8 +341,12 @@ fn start_serial_workers(
                                     packet,
                                 );
                             }
-                            Ok(_) => {}
-                            Err(error) if handshake_complete => try_send(
+                            TransportItem::Packet(_) => {}
+                            TransportItem::UserSerial(bytes) if handshake_complete => {
+                                try_send_user_serial(&sender, &reader_dropped_user_serial, bytes);
+                            }
+                            TransportItem::UserSerial(_) => {}
+                            TransportItem::ProtocolError(error) if handshake_complete => try_send(
                                 &sender,
                                 &reader_dropped,
                                 SourceMessage::Diagnostic(ProtocolDiagnostic {
@@ -289,7 +354,7 @@ fn start_serial_workers(
                                     message: error.to_string(),
                                 }),
                             ),
-                            Err(_) => {}
+                            TransportItem::ProtocolError(_) => {}
                         }
                     }
                 }
@@ -317,17 +382,22 @@ fn start_serial_workers(
             app,
             receiver,
             delivery_stop,
-            dropped,
-            ConnectionMode::Serial,
-            Some(port_name),
-            Some(serial_activity),
+            DeliveryContext {
+                dropped,
+                mode: ConnectionMode::Serial,
+                port_name: Some(port_name),
+                serial_activity: Some(serial_activity),
+                dropped_user_serial: Some(dropped_user_serial),
+            },
         );
     });
 
-    ActiveConnection {
+    Ok(ActiveConnection {
         stop,
         handles: vec![reader, delivery],
-    }
+        serial_writer: Some(serial_writer),
+        serial_activity: Some(active_serial_activity),
+    })
 }
 
 fn start_mock_workers(app: AppHandle) -> ActiveConnection {
@@ -395,16 +465,21 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
             app,
             receiver,
             delivery_stop,
-            dropped,
-            ConnectionMode::Mock,
-            None,
-            None,
+            DeliveryContext {
+                dropped,
+                mode: ConnectionMode::Mock,
+                port_name: None,
+                serial_activity: None,
+                dropped_user_serial: None,
+            },
         );
     });
 
     ActiveConnection {
         stop,
         handles: vec![producer, delivery],
+        serial_writer: None,
+        serial_activity: None,
     }
 }
 
@@ -611,15 +686,33 @@ fn try_send(sender: &SyncSender<SourceMessage>, dropped: &AtomicU64, message: So
     }
 }
 
+fn try_send_user_serial(
+    sender: &SyncSender<SourceMessage>,
+    dropped_bytes: &AtomicU64,
+    bytes: Vec<u8>,
+) {
+    let byte_count = bytes.len() as u64;
+    match sender.try_send(SourceMessage::UserSerial(bytes)) {
+        Ok(()) => {}
+        Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
+            dropped_bytes.fetch_add(byte_count, Ordering::Relaxed);
+        }
+    }
+}
+
 fn deliver_events(
     app: AppHandle,
     receiver: Receiver<SourceMessage>,
     stop: Arc<AtomicBool>,
-    dropped: Arc<AtomicU64>,
-    mode: ConnectionMode,
-    port_name: Option<String>,
-    serial_activity: Option<Arc<SerialActivityCounters>>,
+    context: DeliveryContext,
 ) {
+    let DeliveryContext {
+        dropped,
+        mode,
+        port_name,
+        serial_activity,
+        dropped_user_serial,
+    } = context;
     let started = Instant::now();
     let mut hello_received = false;
     let mut timeout_reported = false;
@@ -628,6 +721,8 @@ fn deliver_events(
     let mut coalesced_adc_ui_samples = 0_u64;
     let mut latest_pwm = BTreeMap::<u8, PwmUpdate>::new();
     let mut coalesced_pwm_ui_updates = 0_u64;
+    let mut pending_user_serial = VecDeque::<u8>::new();
+    let mut evicted_user_serial_bytes = 0_u64;
     let mut next_flush = Instant::now() + UI_FLUSH_INTERVAL;
 
     while !stop.load(Ordering::Relaxed) {
@@ -759,6 +854,15 @@ fn deliver_events(
                         coalesced_pwm_ui_updates += 1;
                     }
                 }
+                Ok(SourceMessage::UserSerial(bytes)) => {
+                    for byte in bytes {
+                        if pending_user_serial.len() == USER_SERIAL_UI_CAPACITY {
+                            pending_user_serial.pop_front();
+                            evicted_user_serial_bytes += 1;
+                        }
+                        pending_user_serial.push_back(byte);
+                    }
+                }
                 Ok(SourceMessage::Diagnostic(diagnostic)) => {
                     emit_diagnostic(&app, diagnostic);
                 }
@@ -784,6 +888,12 @@ fn deliver_events(
         if Instant::now() >= next_flush {
             flush_gpio(&app, &mut latest_gpio, &dropped);
             flush_serial_activity(&app, serial_activity.as_deref());
+            flush_user_serial(
+                &app,
+                &mut pending_user_serial,
+                &mut evicted_user_serial_bytes,
+                dropped_user_serial.as_deref(),
+            );
             flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
             flush_pwm(&app, &mut latest_pwm, &mut coalesced_pwm_ui_updates);
             next_flush = Instant::now() + UI_FLUSH_INTERVAL;
@@ -792,6 +902,12 @@ fn deliver_events(
     }
     flush_gpio(&app, &mut latest_gpio, &dropped);
     flush_serial_activity(&app, serial_activity.as_deref());
+    flush_user_serial(
+        &app,
+        &mut pending_user_serial,
+        &mut evicted_user_serial_bytes,
+        dropped_user_serial.as_deref(),
+    );
     flush_adc(&app, &mut pending_adc, &mut coalesced_adc_ui_samples);
     flush_pwm(&app, &mut latest_pwm, &mut coalesced_pwm_ui_updates);
 }
@@ -801,6 +917,27 @@ fn flush_serial_activity(app: &AppHandle, counters: Option<&SerialActivityCounte
         return;
     };
     let _ = app.emit(EVENT_SERIAL_ACTIVITY, batch);
+}
+
+fn flush_user_serial(
+    app: &AppHandle,
+    pending: &mut VecDeque<u8>,
+    evicted_bytes: &mut u64,
+    dropped_bytes: Option<&AtomicU64>,
+) {
+    let dropped = dropped_bytes
+        .map(|counter| counter.swap(0, Ordering::Relaxed))
+        .unwrap_or(0)
+        + std::mem::take(evicted_bytes);
+    if pending.is_empty() && dropped == 0 {
+        return;
+    }
+    let batch = UserSerialBatch {
+        bytes: pending.drain(..).collect(),
+        dropped_bytes: dropped,
+    };
+    validation::record_user_serial(app, &batch);
+    let _ = app.emit(EVENT_USER_SERIAL, batch);
 }
 
 fn flush_gpio(app: &AppHandle, latest_gpio: &mut BTreeMap<u8, GpioUpdate>, dropped: &AtomicU64) {

@@ -13,6 +13,7 @@ import type {
   PwmUpdate,
   SerialActivityBatch,
   SerialPortDescriptor,
+  UserSerialBatch,
 } from "../domain/types";
 
 export interface BackendHandlers {
@@ -22,6 +23,7 @@ export interface BackendHandlers {
   onAdcBatch: (batch: AdcBatch) => void;
   onPwmBatch: (batch: PwmBatch) => void;
   onSerialActivity: (batch: SerialActivityBatch) => void;
+  onUserSerial: (batch: UserSerialBatch) => void;
   onDiagnostic: (diagnostic: ProtocolDiagnostic) => void;
 }
 
@@ -50,6 +52,9 @@ export async function subscribeToBackend(
     ),
     listen<SerialActivityBatch>("asv://serial-activity", (event) =>
       handlers.onSerialActivity(event.payload),
+    ),
+    listen<UserSerialBatch>("asv://user-serial", (event) =>
+      handlers.onUserSerial(event.payload),
     ),
     listen<ProtocolDiagnostic>("asv://protocol-diagnostic", (event) =>
       handlers.onDiagnostic(event.payload),
@@ -80,6 +85,10 @@ export async function startMock(): Promise<void> {
 
 export async function disconnect(): Promise<void> {
   return invoke("disconnect");
+}
+
+export async function writeUserSerial(bytes: number[]): Promise<number> {
+  return invoke<number>("write_user_serial", { bytes });
 }
 
 export async function startHardwareValidation(): Promise<boolean> {

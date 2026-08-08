@@ -7,6 +7,8 @@ import { AnalogPanel } from "./components/AnalogPanel";
 import { PinInspector } from "./components/PinInspector";
 import { PwmInspector } from "./components/PwmInspector";
 import { PwmPanel } from "./components/PwmPanel";
+import { SerialInspector } from "./components/SerialInspector";
+import { SerialMonitor } from "./components/SerialMonitor";
 import { UnoBoard } from "./components/UnoBoard";
 import {
   applyAdcSamples,
@@ -20,6 +22,11 @@ import {
   serialLedVisibility,
   type SerialLedDeadlines,
 } from "./domain/serial-led-state";
+import {
+  EMPTY_USER_SERIAL_STATE,
+  appendUserSerial,
+  type UserSerialState,
+} from "./domain/user-serial-store";
 import type {
   AdcBatch,
   BoardDescriptor,
@@ -30,6 +37,7 @@ import type {
   PwmBatch,
   SerialActivityBatch,
   SerialPortDescriptor,
+  UserSerialBatch,
 } from "./domain/types";
 import { useFramesPerSecond } from "./hooks/use-performance-metrics";
 import {
@@ -43,6 +51,7 @@ import {
   startMock,
   startHardwareValidation,
   subscribeToBackend,
+  writeUserSerial,
 } from "./infrastructure/tauri-bridge";
 
 const INITIAL_STATUS: ConnectionStatus = {
@@ -67,8 +76,11 @@ export function App() {
   const [selectedPin, setSelectedPin] = useState(13);
   const [selectedAnalogChannel, setSelectedAnalogChannel] = useState(0);
   const [selectedPwmPin, setSelectedPwmPin] = useState(9);
-  const [activeTab, setActiveTab] = useState<"digital" | "analog" | "pwm">(
-    "digital",
+  const [activeTab, setActiveTab] = useState<
+    "digital" | "analog" | "pwm" | "serial"
+  >("digital");
+  const [userSerial, setUserSerial] = useState<UserSerialState>(
+    EMPTY_USER_SERIAL_STATE,
   );
   const [diagnostics, setDiagnostics] = useState<DiagnosticEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -115,6 +127,10 @@ export function App() {
     setSerialLedClock(observedAtMs);
   }, []);
 
+  const acceptUserSerial = useCallback((batch: UserSerialBatch) => {
+    setUserSerial((current) => appendUserSerial(current, batch));
+  }, []);
+
   useEffect(() => {
     if (!backendReady) {
       return;
@@ -136,6 +152,7 @@ export function App() {
           setPins({});
           setAnalog({});
           setPwm({});
+          setUserSerial(EMPTY_USER_SERIAL_STATE);
           setBoard(null);
           setDiagnostics([]);
         }
@@ -145,6 +162,7 @@ export function App() {
       onAdcBatch: acceptAdcBatch,
       onPwmBatch: acceptPwmBatch,
       onSerialActivity: acceptSerialActivity,
+      onUserSerial: acceptUserSerial,
       onDiagnostic: appendDiagnostic,
     })
       .then((removeListeners) => {
@@ -169,6 +187,7 @@ export function App() {
     acceptBatch,
     acceptPwmBatch,
     acceptSerialActivity,
+    acceptUserSerial,
     appendDiagnostic,
     backendReady,
   ]);
@@ -344,7 +363,7 @@ export function App() {
               <Metric label="Board" value="Arduino Uno" />
               <Metric label="Firmware" value={firmware} />
               <Metric label="Port" value={status.portName ?? "—"} />
-              <Metric label="App" value="0.3.0" />
+              <Metric label="App" value="0.4.0" />
               <Metric label="Render" value={`${fps} FPS`} />
               <Metric label="Packets" value={`${packetRate}/s`} />
             </div>
@@ -359,8 +378,12 @@ export function App() {
         >
           <div className="board-workspace-heading">
             <div>
-              <p className="eyebrow">Interactive board</p>
-              <h2 id="board-heading">Arduino Uno</h2>
+              <p className="eyebrow">
+                {activeTab === "serial" ? "Separated user stream" : "Interactive board"}
+              </p>
+              <h2 id="board-heading">
+                {activeTab === "serial" ? "Serial Monitor" : "Arduino Uno"}
+              </h2>
             </div>
             <div className="workspace-tabs" role="tablist" aria-label="Signal type">
               <button
@@ -390,61 +413,83 @@ export function App() {
               >
                 PWM
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "serial"}
+                className={activeTab === "serial" ? "active" : ""}
+                onClick={() => setActiveTab("serial")}
+              >
+                Serial
+              </button>
             </div>
           </div>
           <div className="board-content">
-            <div className="board-and-summary">
-              <div className="observation-summary">
-                <span>
-                  {activeTab === "digital"
-                    ? connectedPinCount
-                    : activeTab === "analog"
-                      ? observedAnalogCount
-                      : observedPwmCount}
-                </span>
-                {activeTab === "digital"
-                  ? "of 14 digital pins observed"
-                  : activeTab === "analog"
-                    ? "of 6 analog channels observed"
-                    : "of 6 hardware PWM pins observed"}
-              </div>
-              <UnoBoard
-                pins={pins}
-                pwm={pwm}
-                serialLeds={serialLeds}
-                selectedDigitalPin={selectedPin}
-                selectedAnalogChannel={selectedAnalogChannel}
-                selectedPwmPin={selectedPwmPin}
-                activeTab={activeTab}
-                onSelectDigitalPin={(pin) => {
-                  setSelectedPin(pin);
-                  setActiveTab("digital");
-                }}
-                onSelectAnalogChannel={(channel) => {
-                  setSelectedAnalogChannel(channel);
-                  setActiveTab("analog");
-                }}
-                onSelectPwmPin={(pin) => {
-                  setSelectedPwmPin(pin);
-                  setActiveTab("pwm");
-                }}
+            {activeTab === "serial" ? (
+              <SerialMonitor
+                state={userSerial}
+                canSend={
+                  status.phase === "connected" && status.mode === "serial"
+                }
+                onSend={writeUserSerial}
+                onClear={() => setUserSerial(EMPTY_USER_SERIAL_STATE)}
               />
-            </div>
-            {activeTab === "analog" && (
-              <AnalogPanel
-                channels={analog}
-                selectedChannel={selectedAnalogChannel}
-                mockMode={status.mode === "mock"}
-                onSelectChannel={setSelectedAnalogChannel}
-              />
-            )}
-            {activeTab === "pwm" && (
-              <PwmPanel
-                pins={pwm}
-                selectedPin={selectedPwmPin}
-                mockMode={status.mode === "mock"}
-                onSelectPin={setSelectedPwmPin}
-              />
+            ) : (
+              <>
+                <div className="board-and-summary">
+                  <div className="observation-summary">
+                    <span>
+                      {activeTab === "digital"
+                        ? connectedPinCount
+                        : activeTab === "analog"
+                          ? observedAnalogCount
+                          : observedPwmCount}
+                    </span>
+                    {activeTab === "digital"
+                      ? "of 14 digital pins observed"
+                      : activeTab === "analog"
+                        ? "of 6 analog channels observed"
+                        : "of 6 hardware PWM pins observed"}
+                  </div>
+                  <UnoBoard
+                    pins={pins}
+                    pwm={pwm}
+                    serialLeds={serialLeds}
+                    selectedDigitalPin={selectedPin}
+                    selectedAnalogChannel={selectedAnalogChannel}
+                    selectedPwmPin={selectedPwmPin}
+                    activeTab={activeTab}
+                    onSelectDigitalPin={(pin) => {
+                      setSelectedPin(pin);
+                      setActiveTab("digital");
+                    }}
+                    onSelectAnalogChannel={(channel) => {
+                      setSelectedAnalogChannel(channel);
+                      setActiveTab("analog");
+                    }}
+                    onSelectPwmPin={(pin) => {
+                      setSelectedPwmPin(pin);
+                      setActiveTab("pwm");
+                    }}
+                  />
+                </div>
+                {activeTab === "analog" && (
+                  <AnalogPanel
+                    channels={analog}
+                    selectedChannel={selectedAnalogChannel}
+                    mockMode={status.mode === "mock"}
+                    onSelectChannel={setSelectedAnalogChannel}
+                  />
+                )}
+                {activeTab === "pwm" && (
+                  <PwmPanel
+                    pins={pwm}
+                    selectedPin={selectedPwmPin}
+                    mockMode={status.mode === "mock"}
+                    onSelectPin={setSelectedPwmPin}
+                  />
+                )}
+              </>
             )}
           </div>
           {activeTab === "digital" && (
@@ -470,8 +515,10 @@ export function App() {
             channel={selectedAnalogChannel}
             state={analog[selectedAnalogChannel]}
           />
-        ) : (
+        ) : activeTab === "pwm" ? (
           <PwmInspector pin={selectedPwmPin} state={pwm[selectedPwmPin]} />
+        ) : (
+          <SerialInspector state={userSerial} />
         )}
       </main>
     </div>

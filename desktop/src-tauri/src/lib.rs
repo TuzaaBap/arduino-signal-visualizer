@@ -15,6 +15,7 @@ pub fn run() {
             connection::connect_serial,
             connection::start_mock,
             connection::disconnect,
+            connection::write_user_serial,
             validation::validation_start,
             validation::validation_acknowledge_gpio,
             validation::validation_acknowledge_adc,
