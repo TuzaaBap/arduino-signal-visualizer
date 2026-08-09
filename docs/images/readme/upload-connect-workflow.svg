@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" role="img" aria-labelledby="title description">
+  <title id="title">Safe Arduino upload and connection workflow</title>
+  <desc id="description">Disconnect Arduino Signal Visualizer, upload from Arduino IDE, close Serial Monitor, then reconnect Arduino Signal Visualizer.</desc>
+  <rect width="1200" height="330" rx="28" fill="#07151b"/>
+  <rect x="24" y="24" width="1152" height="282" rx="22" fill="#0b2028" stroke="#244550" stroke-width="2"/>
+  <text x="600" y="66" text-anchor="middle" fill="#f4fbfd" font-family="Segoe UI, Arial, sans-serif" font-size="27" font-weight="700">Safe upload cycle — follow this order every time</text>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <rect x="54" y="101" width="232" height="150" rx="18" fill="#102c36" stroke="#5de0d7" stroke-width="3"/>
+    <circle cx="86" cy="133" r="19" fill="#5de0d7"/>
+    <text x="86" y="141" text-anchor="middle" fill="#07151b" font-size="22" font-weight="800">1</text>
+    <text x="170" y="140" text-anchor="middle" fill="#f4fbfd" font-size="21" font-weight="700">Disconnect ASV</text>
+    <text x="170" y="178" text-anchor="middle" fill="#b8cbd2" font-size="17">Release COM / serial port</text>
+    <text x="170" y="207" text-anchor="middle" fill="#ffcb65" font-size="16" font-weight="700">Do not upload while connected</text>
+
+    <path d="M300 176h44" stroke="#5de0d7" stroke-width="5" stroke-linecap="round"/>
+    <path d="m334 163 16 13-16 13" fill="none" stroke="#5de0d7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="362" y="101" width="220" height="150" rx="18" fill="#102c36" stroke="#5de0d7" stroke-width="3"/>
+    <circle cx="394" cy="133" r="19" fill="#5de0d7"/>
+    <text x="394" y="141" text-anchor="middle" fill="#07151b" font-size="22" font-weight="800">2</text>
+    <text x="485" y="140" text-anchor="middle" fill="#f4fbfd" font-size="21" font-weight="700">Upload sketch</text>
+    <text x="472" y="178" text-anchor="middle" fill="#b8cbd2" font-size="17">Arduino Uno + correct port</text>
+    <text x="472" y="207" text-anchor="middle" fill="#b8cbd2" font-size="16">Wait for “Done uploading”</text>
+
+    <path d="M596 176h44" stroke="#5de0d7" stroke-width="5" stroke-linecap="round"/>
+    <path d="m630 163 16 13-16 13" fill="none" stroke="#5de0d7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="658" y="101" width="224" height="150" rx="18" fill="#102c36" stroke="#5de0d7" stroke-width="3"/>
+    <circle cx="690" cy="133" r="19" fill="#5de0d7"/>
+    <text x="690" y="141" text-anchor="middle" fill="#07151b" font-size="22" font-weight="800">3</text>
+    <text x="780" y="140" text-anchor="middle" fill="#f4fbfd" font-size="21" font-weight="700">Close Serial Monitor</text>
+    <text x="770" y="178" text-anchor="middle" fill="#b8cbd2" font-size="17">Only one program owns COM</text>
+    <text x="770" y="207" text-anchor="middle" fill="#b8cbd2" font-size="16">Close other serial terminals too</text>
+
+    <path d="M896 176h44" stroke="#5de0d7" stroke-width="5" stroke-linecap="round"/>
+    <path d="m930 163 16 13-16 13" fill="none" stroke="#5de0d7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="958" y="101" width="190" height="150" rx="18" fill="#123b3d" stroke="#5de0d7" stroke-width="3"/>
+    <circle cx="990" cy="133" r="19" fill="#5de0d7"/>
+    <text x="990" y="141" text-anchor="middle" fill="#07151b" font-size="22" font-weight="800">4</text>
+    <text x="1062" y="140" text-anchor="middle" fill="#f4fbfd" font-size="21" font-weight="700">Connect ASV</text>
+    <text x="1053" y="178" text-anchor="middle" fill="#d1f5f1" font-size="17">Select port + same baud</text>
+    <text x="1053" y="207" text-anchor="middle" fill="#d1f5f1" font-size="16">Watch live instrumented data</text>
+
+    <text x="600" y="284" text-anchor="middle" fill="#8faab4" font-size="15">ASV = Arduino Signal Visualizer • COM is called a serial port on macOS</text>
+  </g>
+</svg>

@@ -4,13 +4,13 @@
 
 One beta tag produces matching artifacts for the same source revision:
 
-| Audience | Artifact | Build host |
-| --- | --- | --- |
-| Windows 10/11 x64 | NSIS `-setup.exe` (recommended, current user) | `windows-latest` |
-| Managed Windows x64 | MSI (administrator, all users) | `windows-latest` |
-| Apple-silicon Mac | `aarch64` DMG | `macos-15` |
-| Intel Mac | `x86_64` DMG | `macos-15-intel` |
-| Arduino IDE 2 | `ArduinoSignalVisualizer-VERSION.zip` and SHA-256 | `ubuntu-latest` |
+| Audience            | Artifact                                          | Build host       |
+| ------------------- | ------------------------------------------------- | ---------------- |
+| Windows 10/11 x64   | NSIS `-setup.exe` (recommended, current user)     | `windows-latest` |
+| Managed Windows x64 | MSI (administrator, all users)                    | `windows-latest` |
+| Apple-silicon Mac   | `aarch64` DMG                                     | `macos-15`       |
+| Intel Mac           | `x86_64` DMG                                      | `macos-15-intel` |
+| Arduino IDE 2       | `ArduinoSignalVisualizer-VERSION.zip` and SHA-256 | `ubuntu-latest`  |
 
 Desktop bundles are built by Tauri on the native operating system. The Arduino
 ZIP is deterministic and has one top-level `ArduinoSignalVisualizer` folder,
@@ -48,8 +48,9 @@ It writes the ZIP and a sibling `.sha256` checksum file.
 
 The library preserves the Arduino core `Serial` object. ASV protocol-v2 frames
 and ordinary sketch text share the Uno UART but are decoded into separate
-desktop streams. User text has priority; ASV skips telemetry rather than
-blocking the sketch if the Uno transmit buffer is full.
+desktop streams. ASV keeps bounded latest-state telemetry slots and sends only
+complete frames that fit the Uno transmit buffer. A busy UART therefore neither
+blocks the sketch nor creates partial frames or false sequence gaps.
 
 Including `ASVInstrumented.h` enables the automatic lifecycle. It starts Serial
 at 115200 baud by default, then attaches telemetry after the sketch's `setup()`.

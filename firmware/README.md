@@ -50,9 +50,11 @@ Desktop Serial Monitor input is written as raw bytes, so ordinary
 `Serial.available()` and `Serial.read()` continue to work. ASV control commands
 do not share the desktop-to-board direction in this version.
 
-ASV telemetry never waits behind a full Uno transmit buffer. The student's
-Serial output has priority; skipped instrumentation appears as a protocol
-sequence gap instead of changing sketch timing.
+ASV telemetry never waits behind a full Uno transmit buffer. GPIO, ADC, and PWM
+use bounded latest-state slots and are serviced fairly when a complete frame
+fits. A busy UART does not create a partial ASV frame or a false sequence gap;
+if calls arrive faster than the physical link can carry them, the newest pending
+state replaces the older pending state for that signal.
 
 Instrumented `analogRead()` returns the Arduino core result unchanged, then reports the
 channel, raw count, resolution, reference mode, integer reference millivolts,
