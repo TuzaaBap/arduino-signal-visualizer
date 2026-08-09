@@ -19,6 +19,7 @@ class ArduinoSignalVisualizer {
   void pinMode(uint8_t pin, uint8_t mode);
   void digitalWrite(uint8_t pin, uint8_t value);
   int digitalRead(uint8_t pin);
+  void delay(unsigned long milliseconds);
   void analogReference(uint8_t mode);
   void analogReference(uint8_t mode, uint16_t referenceMillivolts);
   int analogRead(uint8_t pin);
@@ -57,6 +58,8 @@ class ArduinoSignalVisualizer {
   uint16_t pendingDigitalMask_;
   uint8_t pendingAnalogMask_;
   uint16_t pendingPwmMask_;
+  uint8_t lastDigitalLevels_[kDigitalPinCount];
+  uint8_t lastDigitalSources_[kDigitalPinCount];
   uint16_t lastAnalogValues_[kAnalogChannelCount];
   uint8_t lastPwmValues_[kDigitalPinCount];
   bool helloPending_;
@@ -69,6 +72,7 @@ class ArduinoSignalVisualizer {
   bool sendPwm(uint8_t pin, uint8_t dutyValue, bool recordDrop = true);
   bool sendPacket(uint8_t packetType, const uint8_t* payload,
                   size_t payloadLength, bool recordDrop);
+  void queueDigital(uint8_t pin, uint8_t level, uint8_t source);
   uint8_t wireMode(uint8_t arduinoMode) const;
   uint8_t wireAnalogReferenceMode(uint8_t arduinoMode) const;
   uint16_t defaultAnalogReferenceMillivolts(uint8_t wireMode) const;

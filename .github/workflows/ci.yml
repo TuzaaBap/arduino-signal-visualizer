@@ -101,6 +101,13 @@ jobs:
           --library firmware/ArduinoSignalVisualizer
           --warnings all
           firmware/tests/sketches/ExplicitApi
+      - name: Compile beginner GPIO burst regression
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/tests/sketches/DigitalBurst
       - name: Compile native protocol test
         run: >-
           g++ -std=c++11 -Wall -Wextra -Werror

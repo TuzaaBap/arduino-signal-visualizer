@@ -18,6 +18,8 @@ ArduinoSignalVisualizer::ArduinoSignalVisualizer()
       helloPending_(false) {
   for (uint8_t pin = 0; pin < kDigitalPinCount; ++pin) {
     pinModes_[pin] = kUnknownMode;
+    lastDigitalLevels_[pin] = LOW;
+    lastDigitalSources_[pin] = 2;
     lastPwmValues_[pin] = 0;
   }
   for (uint8_t channel = 0; channel < kAnalogChannelCount; ++channel) {
@@ -60,7 +62,7 @@ void ArduinoSignalVisualizer::service() {
     if ((pendingDigitalMask_ & pinMask) == 0) {
       continue;
     }
-    if (sendDigital(pin, static_cast<uint8_t>(::digitalRead(pin) == HIGH), 2,
+    if (sendDigital(pin, lastDigitalLevels_[pin], lastDigitalSources_[pin],
                     false)) {
       pendingDigitalMask_ &= static_cast<uint16_t>(~pinMask);
     }
@@ -98,25 +100,33 @@ void ArduinoSignalVisualizer::pinMode(uint8_t pin, uint8_t mode) {
   }
 
   pinModes_[pin] = wireMode(mode);
-  observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
-  sendDigital(pin, static_cast<uint8_t>(::digitalRead(pin) == HIGH), 2);
+  queueDigital(pin, static_cast<uint8_t>(::digitalRead(pin) == HIGH), 2);
 }
 
 void ArduinoSignalVisualizer::digitalWrite(uint8_t pin, uint8_t value) {
   ::digitalWrite(pin, value);
   if (pin < kDigitalPinCount) {
-    observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
-    sendDigital(pin, static_cast<uint8_t>(value == HIGH), 0);
+    queueDigital(pin, static_cast<uint8_t>(value == HIGH), 0);
   }
 }
 
 int ArduinoSignalVisualizer::digitalRead(uint8_t pin) {
   const int value = ::digitalRead(pin);
   if (pin < kDigitalPinCount) {
-    observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
-    sendDigital(pin, static_cast<uint8_t>(value == HIGH), 1);
+    queueDigital(pin, static_cast<uint8_t>(value == HIGH), 1);
   }
   return value;
+}
+
+void ArduinoSignalVisualizer::delay(unsigned long milliseconds) {
+  const unsigned long startedAt = millis();
+  do {
+    service();
+    if (millis() - startedAt >= milliseconds) {
+      return;
+    }
+    ::delay(1);
+  } while (true);
 }
 
 void ArduinoSignalVisualizer::analogReference(uint8_t mode) {
@@ -154,15 +164,24 @@ void ArduinoSignalVisualizer::analogWrite(uint8_t pin, int value) {
     lastPwmValues_[pin] = static_cast<uint8_t>(value);
     sendPwm(pin, static_cast<uint8_t>(value));
   } else if (!isPwmPin(pin)) {
-    observedDigitalMask_ |= static_cast<uint16_t>(1U << pin);
-    sendDigital(pin, static_cast<uint8_t>(value < 128 ? LOW : HIGH), 0);
+    queueDigital(pin, static_cast<uint8_t>(value < 128 ? LOW : HIGH), 0);
   }
+}
+
+void ArduinoSignalVisualizer::queueDigital(uint8_t pin, uint8_t level,
+                                           uint8_t source) {
+  const uint16_t pinMask = static_cast<uint16_t>(1U << pin);
+  observedDigitalMask_ |= pinMask;
+  pendingDigitalMask_ |= pinMask;
+  lastDigitalLevels_[pin] = level;
+  lastDigitalSources_[pin] = source;
+  service();
 }
 
 bool ArduinoSignalVisualizer::sendHello(bool recordDrop) {
   const uint8_t payload[] = {
       1,     // Arduino Uno R3
-      0, 5, 0,  // firmware 0.5.0
+      0, 5, 1,  // firmware 0.5.1
       15, 0,  // digital GPIO, ADC, PWM, and transparent Serial capabilities
       0,     // reset cause is unknown in the portable v1 implementation
       0x88, 0x13,  // 5000 mV

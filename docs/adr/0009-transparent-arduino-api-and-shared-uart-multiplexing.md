@@ -22,8 +22,13 @@ automatic instrumented lifecycle was physically validated on 2026-08-09.
   attaches ASV at the resulting Serial configuration, and services pending
   startup telemetry around each ordinary `loop()` call. User sketches do not
   call ASV lifecycle methods.
-- ASV telemetry checks the Uno hardware transmit-buffer capacity and drops an
-  event instead of blocking the sketch. Sequence gaps expose dropped telemetry.
+- Non-coalescible telemetry checks the Uno hardware transmit-buffer capacity
+  and drops an event instead of blocking the sketch. Sequence gaps expose that
+  loss to the desktop.
+- Digital GPIO uses a bounded latest-state slot for each of the Uno's 14 pins.
+  When the hardware UART is temporarily full, the library retains that state
+  and services it during normal `delay()` calls instead of generating a false
+  protocol failure. The buffer size cannot grow with runtime.
 
 ## Why
 

@@ -2,7 +2,8 @@
 
 Date: 2026-08-09
 
-Status: `0.5.0` release candidate physically validated; not yet released.
+Status: `0.5.1` corrective release candidate physically validated; not yet
+released.
 
 ## Objective
 
@@ -96,6 +97,33 @@ the exact release-candidate source was rebuilt and uploaded once successfully.
   - Dropped-packet warnings: 0.
 - Release Arduino ZIP SHA-256:
   `C5FB2CB60B239D26780D641A37342100B906B8951B82F79D8F0E937854C0EF23`.
+
+## 0.5.1 beginner GPIO burst regression
+
+The corrective candidate retains the latest unsent state for each Uno digital
+pin in a fixed-size buffer. Ordinary Arduino `delay()` calls service that buffer,
+so a beginner sketch can write D2 through D13 consecutively without adding ASV
+lifecycle or service calls.
+
+- Firmware and desktop application: 0.5.1.
+- Test sketch: `firmware/tests/sketches/DigitalBurst/DigitalBurst.ino`.
+- Flash: 4,520 bytes of 32,256 (14%).
+- SRAM: 304 bytes of 2,048 (14%).
+- HEX SHA-256:
+  `CA1F1E3950CC06571650490E4B572BA2AF9DBF85705F36A1A23BD1DFCBE646BC`.
+- One upload attempt succeeded and AVRdude verified all flash bytes.
+- 32.3-second physical desktop run, including automatic reconnect:
+  - Connection lifecycle:
+    `waitingForHello -> connected -> disconnected -> waitingForHello -> connected`.
+  - GPIO updates: 336.
+  - Every pin D2 through D13 was observed HIGH 15 times and LOW 13 times.
+  - UI acknowledgements: 46.
+  - The UI matched the backend GPIO state during the run.
+  - CRC failures: 0.
+  - Protocol diagnostics: 0.
+  - Dropped-packet warnings: 0.
+- Release Arduino ZIP SHA-256:
+  `F9636F3FC94FDCCAC6A90DCA5E5B8DE104C14800733D0F0831ACA2F13D2A38CD`.
 
 ## Software and packaging checks
 

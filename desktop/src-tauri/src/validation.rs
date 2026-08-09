@@ -48,6 +48,7 @@ struct ValidationSnapshot {
     dropped_user_serial_bytes: u64,
     ui_acknowledgements: u64,
     ui_matches_backend: bool,
+    ui_gpio_match_observed: bool,
     ui_adc_acknowledgements: u64,
     ui_adc_match_observed: bool,
     maximum_ui_adc_buffer_length: usize,
@@ -133,6 +134,7 @@ impl ValidationRecorder {
                 dropped_user_serial_bytes: 0,
                 ui_acknowledgements: 0,
                 ui_matches_backend: true,
+                ui_gpio_match_observed: false,
                 ui_adc_acknowledgements: 0,
                 ui_adc_match_observed: false,
                 maximum_ui_adc_buffer_length: 0,
@@ -341,6 +343,9 @@ impl ValidationRecorder {
                         && backend.level == ui.level
                 })
         });
+        if state.ui_matches_backend && !state.pins.is_empty() {
+            state.ui_gpio_match_observed = true;
+        }
     }
 
     fn write_report(&self, force: bool) {

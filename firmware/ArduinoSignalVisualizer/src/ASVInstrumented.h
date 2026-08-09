@@ -18,6 +18,7 @@
 #define pinMode(pin, mode) ASV.pinMode((pin), (mode))
 #define digitalWrite(pin, value) ASV.digitalWrite((pin), (value))
 #define digitalRead(pin) ASV.digitalRead((pin))
+#define delay(milliseconds) ASV.delay((milliseconds))
 #define analogReference(...) ASV.analogReference(__VA_ARGS__)
 #define analogRead(pin) ASV.analogRead((pin))
 #define analogWrite(pin, value) ASV.analogWrite((pin), (value))

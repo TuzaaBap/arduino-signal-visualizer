@@ -7,7 +7,7 @@ in the application's separate Serial Monitor.
 
 ## Install in Arduino IDE 2
 
-1. Download `ArduinoSignalVisualizer-0.5.0.zip` from the matching GitHub beta
+1. Download `ArduinoSignalVisualizer-0.5.1.zip` from the matching GitHub beta
    release.
 2. In Arduino IDE, select **Sketch > Include Library > Add .ZIP Library...**.
 3. Select the downloaded ZIP.
@@ -67,6 +67,11 @@ Select that same baud rate in the desktop connection panel. ASV attaches after
 the user's `setup()` returns, so its hello packet uses the final UART
 configuration. The explicit `ArduinoSignalVisualizer.h` API remains available
 for advanced integrations that intentionally manage the lifecycle themselves.
+
+Back-to-back GPIO writes are retained in a fixed per-pin pending-state buffer
+if the Uno UART is temporarily full. Ordinary `delay()` calls service that
+buffer automatically, so beginner sketches do not add ASV calls or timing
+workarounds. The buffer is bounded to the Uno's 14 digital pins.
 
 ## Serial ownership
 

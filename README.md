@@ -17,7 +17,7 @@ Each beta release contains matching desktop and Arduino library artifacts:
 
 1. Install the Windows setup executable or the DMG matching the Mac processor.
 2. In Arduino IDE 2, choose **Sketch > Include Library > Add .ZIP Library...**
-   and select `ArduinoSignalVisualizer-0.5.0.zip`.
+   and select `ArduinoSignalVisualizer-0.5.1.zip`.
 3. Open **File > Examples > ArduinoSignalVisualizer > BareMinimum**, select
    the Arduino Uno and upload. For an existing sketch, add only
    `#include <ASVInstrumented.h>` after its other library headers.

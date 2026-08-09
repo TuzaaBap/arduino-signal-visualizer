@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Beta tag matching the source version, for example v0.5.0-beta.1
+        description: Beta tag matching the source version, for example v0.5.1-beta.1
         required: true
-        default: v0.5.0-beta.1
+        default: v0.5.1-beta.1
         type: string
 
 permissions:

@@ -20,7 +20,7 @@ Arduino user directory and compiles all five installed examples.
 ## Manual beta workflow
 
 The **Beta Release** GitHub Actions workflow requires an explicit tag input such
-as `v0.5.0-beta.1`. The tag must match the version in `library.properties`.
+as `v0.5.1-beta.1`. The tag must match the version in `library.properties`.
 The workflow creates a draft prerelease, then attaches all successful platform
 artifacts. A maintainer reviews the draft and download names before making it
 public.
@@ -65,7 +65,7 @@ it on **Disconnect** or application exit, and provides its own Serial tab for
 normal sketch input/output.
 
 Transparent mode supports ordinary text. Strict framing of arbitrary binary
-user traffic is outside the 0.5.0 beta and must not be implied in release copy.
+user traffic is outside the 0.5.1 beta and must not be implied in release copy.
 
 ## Signing status
 
