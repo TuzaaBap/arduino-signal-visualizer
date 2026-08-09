@@ -22,13 +22,17 @@ automatic instrumented lifecycle was physically validated on 2026-08-09.
   attaches ASV at the resulting Serial configuration, and services pending
   startup telemetry around each ordinary `loop()` call. User sketches do not
   call ASV lifecycle methods.
-- Non-coalescible telemetry checks the Uno hardware transmit-buffer capacity
-  and drops an event instead of blocking the sketch. Sequence gaps expose that
-  loss to the desktop.
-- Digital GPIO uses a bounded latest-state slot for each of the Uno's 14 pins.
-  When the hardware UART is temporarily full, the library retains that state
-  and services it during normal `delay()` calls instead of generating a false
-  protocol failure. The buffer size cannot grow with runtime.
+- GPIO, ADC, and PWM telemetry each use fixed latest-state slots: one per Uno
+  digital pin, analog channel, or PWM pin. A round-robin scheduler gives every
+  class a chance to transmit and services pending state during ordinary
+  `delay()` calls. Buffer memory cannot grow with runtime.
+- A sequence number advances only after a complete COBS frame fits in and is
+  accepted by the Uno hardware transmit buffer. Temporary UART pressure
+  therefore cannot create a false missing-packet diagnostic.
+- The firmware sends a low-rate board hello beacon. On connection the desktop
+  clears stale USB input, deliberately pulses DTR, and clears input once more
+  while the bootloader starts. The beacon is a fallback when an adapter does
+  not reset the Uno, and repeated in-sequence beacons are not shown as resets.
 
 ## Why
 
@@ -54,3 +58,7 @@ familiar while explicit v2 frame boundaries let the desktop demultiplex output.
   unless that data is also framed. A later strict-binary mode may provide an
   opt-in framed Serial proxy.
 - D0/D1 remain electrically shared with the USB UART.
+- At 115200 baud the 8N1 wire limit is 11,520 bytes per second. Current GPIO,
+  ADC, and PWM frames are 23, 27, and 43 bytes. Every state is delivered while
+  generated traffic remains within the link budget; above it, fixed slots
+  retain the newest state rather than pretending every transition was sampled.

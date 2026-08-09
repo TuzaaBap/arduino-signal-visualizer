@@ -1,0 +1,15 @@
+#include <ASVInstrumented.h>
+
+void setup() {
+  for (int pin = 2; pin <= 13; pin++) {
+    pinMode(pin, OUTPUT);
+  }
+}
+
+void loop() {
+  for (int pin = 2; pin <= 13; pin++) {
+    digitalWrite(pin, HIGH);
+    delay(100);
+    digitalWrite(pin, LOW);
+  }
+}

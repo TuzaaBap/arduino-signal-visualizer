@@ -44,6 +44,9 @@ class ArduinoSignalVisualizer {
   static constexpr uint8_t kAnalogChannelCount = 6;
   static constexpr uint8_t kAdcResolutionBits = 10;
   static constexpr uint8_t kPwmResolutionBits = 8;
+  static constexpr unsigned long kHelloIntervalMs = 1000;
+  static constexpr uint8_t kServiceSlotCount =
+      kDigitalPinCount + kAnalogChannelCount + kDigitalPinCount;
   static constexpr uint8_t kUnknownMode = 0xff;
   static constexpr uint8_t kUnknownAnalogChannel = 0xff;
 
@@ -62,17 +65,19 @@ class ArduinoSignalVisualizer {
   uint8_t lastDigitalSources_[kDigitalPinCount];
   uint16_t lastAnalogValues_[kAnalogChannelCount];
   uint8_t lastPwmValues_[kDigitalPinCount];
+  uint8_t serviceCursor_;
+  unsigned long lastHelloMs_;
   bool helloPending_;
 
-  bool sendHello(bool recordDrop = true);
-  bool sendDigital(uint8_t pin, uint8_t level, uint8_t source,
-                   bool recordDrop = true);
-  bool sendAnalog(uint8_t channel, uint16_t rawValue,
-                  bool recordDrop = true);
-  bool sendPwm(uint8_t pin, uint8_t dutyValue, bool recordDrop = true);
+  bool sendHello();
+  bool sendDigital(uint8_t pin, uint8_t level, uint8_t source);
+  bool sendAnalog(uint8_t channel, uint16_t rawValue);
+  bool sendPwm(uint8_t pin, uint8_t dutyValue);
   bool sendPacket(uint8_t packetType, const uint8_t* payload,
-                  size_t payloadLength, bool recordDrop);
+                  size_t payloadLength);
   void queueDigital(uint8_t pin, uint8_t level, uint8_t source);
+  void queueAnalog(uint8_t channel, uint16_t rawValue);
+  void queuePwm(uint8_t pin, uint8_t dutyValue);
   uint8_t wireMode(uint8_t arduinoMode) const;
   uint8_t wireAnalogReferenceMode(uint8_t arduinoMode) const;
   uint16_t defaultAnalogReferenceMillivolts(uint8_t wireMode) const;

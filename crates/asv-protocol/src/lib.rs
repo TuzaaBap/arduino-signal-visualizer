@@ -1109,24 +1109,27 @@ pub enum SequenceObservation {
 #[derive(Debug, Default)]
 pub struct SequenceTracker {
     last: Option<u16>,
+    saw_data_packet: bool,
 }
 
 impl SequenceTracker {
     pub fn observe(&mut self, packet: &Packet) -> SequenceObservation {
-        if packet.packet_type == PacketType::BoardHello {
-            let observation = if self.last.is_some() {
+        let Some(last) = self.last else {
+            self.last = Some(packet.sequence);
+            self.saw_data_packet = packet.packet_type != PacketType::BoardHello;
+            return SequenceObservation::First;
+        };
+        if packet.packet_type == PacketType::BoardHello && packet.sequence == 0 && last != u16::MAX
+        {
+            self.last = Some(packet.sequence);
+            let observation = if self.saw_data_packet {
                 SequenceObservation::BoardReset
             } else {
                 SequenceObservation::First
             };
-            self.last = Some(packet.sequence);
+            self.saw_data_packet = false;
             return observation;
         }
-
-        let Some(last) = self.last else {
-            self.last = Some(packet.sequence);
-            return SequenceObservation::First;
-        };
         let difference = packet.sequence.wrapping_sub(last);
         let observation = match difference {
             0 => SequenceObservation::Duplicate,
@@ -1141,6 +1144,9 @@ impl SequenceTracker {
             SequenceObservation::Duplicate | SequenceObservation::OutOfOrder
         ) {
             self.last = Some(packet.sequence);
+            if packet.packet_type != PacketType::BoardHello {
+                self.saw_data_packet = true;
+            }
         }
         observation
     }

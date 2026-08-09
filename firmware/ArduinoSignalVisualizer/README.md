@@ -68,10 +68,15 @@ the user's `setup()` returns, so its hello packet uses the final UART
 configuration. The explicit `ArduinoSignalVisualizer.h` API remains available
 for advanced integrations that intentionally manage the lifecycle themselves.
 
-Back-to-back GPIO writes are retained in a fixed per-pin pending-state buffer
-if the Uno UART is temporarily full. Ordinary `delay()` calls service that
-buffer automatically, so beginner sketches do not add ASV calls or timing
-workarounds. The buffer is bounded to the Uno's 14 digital pins.
+Back-to-back GPIO, ADC, and PWM updates are retained in fixed latest-state
+buffers if the Uno UART is temporarily full. A fair round-robin scheduler
+services those buffers around `loop()` and during ordinary `delay()` calls, so
+beginner sketches do not add ASV calls or timing workarounds. Sequence numbers
+advance only after a complete frame is accepted by the UART.
+
+The library also sends a low-rate board-identification beacon. This allows the
+desktop application to reconnect even when a USB adapter does not reset the
+Uno when the port is reopened.
 
 ## Serial ownership
 
@@ -81,10 +86,10 @@ application is connected, use its Serial tab for sketch input and output.
 Arduino Serial Monitor, another terminal, and the ASV desktop application
 cannot open the same operating-system serial port at the same time.
 
-User Serial traffic has priority. ASV telemetry will be skipped instead of
-blocking a sketch when the Uno transmit buffer is full; the desktop reports the
-resulting sequence gap. Transparent mode is intended for normal text streams.
-An opt-in strict mode will be required later for arbitrary binary streams that
-may contain ASV framing delimiters.
+User Serial traffic has priority. When the Uno transmit buffer is temporarily
+full, ASV retains the newest GPIO, ADC, and PWM state without blocking the
+sketch or generating a false sequence gap. Transparent mode is intended for
+normal text streams. An opt-in strict mode will be required later for arbitrary
+binary streams that may contain ASV framing delimiters.
 
 This project is independent and is not affiliated with or endorsed by Arduino.

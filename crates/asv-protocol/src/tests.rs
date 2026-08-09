@@ -415,6 +415,45 @@ fn sequence_tracker_reports_gap_duplicate_and_reset() {
 }
 
 #[test]
+fn sequence_tracker_accepts_periodic_hello_beacons() {
+    let packet = |packet_type, sequence| Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type,
+        sequence,
+        board_timestamp_us: 0,
+        payload: Vec::new(),
+    };
+    let mut tracker = SequenceTracker::default();
+    assert_eq!(
+        tracker.observe(&packet(PacketType::DigitalGpio, 10)),
+        SequenceObservation::First
+    );
+    assert_eq!(
+        tracker.observe(&packet(PacketType::BoardHello, 11)),
+        SequenceObservation::InOrder
+    );
+    assert_eq!(
+        tracker.observe(&packet(PacketType::AnalogSample, 12)),
+        SequenceObservation::InOrder
+    );
+}
+
+#[test]
+fn sequence_tracker_ignores_startup_reset_before_data() {
+    let packet = |sequence| Packet {
+        protocol_version: PROTOCOL_VERSION,
+        packet_type: PacketType::BoardHello,
+        sequence,
+        board_timestamp_us: 0,
+        payload: Vec::new(),
+    };
+    let mut tracker = SequenceTracker::default();
+    assert_eq!(tracker.observe(&packet(7)), SequenceObservation::First);
+    assert_eq!(tracker.observe(&packet(0)), SequenceObservation::First);
+    assert_eq!(tracker.observe(&packet(1)), SequenceObservation::InOrder);
+}
+
+#[test]
 fn overlong_frame_is_discarded_through_delimiter() {
     let mut bytes = vec![1; MAX_ENCODED_FRAME_LEN + 8];
     bytes.push(0);

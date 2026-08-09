@@ -15,7 +15,7 @@ use asv_protocol::{
     ProtocolEvent, PwmOutputMode, PwmOutputPolarity, PwmTimerChannel, PwmWaveformMode,
     SequenceObservation, SequenceTracker, TransportDecoder, TransportItem, derive_pwm_timing,
 };
-use serialport::{SerialPort, SerialPortType};
+use serialport::{ClearBuffer, SerialPort, SerialPortType};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::model::{
@@ -192,7 +192,19 @@ pub(crate) fn connect_serial_inner(
             return Err(detail);
         }
     };
+    // A previous session can leave complete ASV frames buffered in the USB
+    // bridge or Windows serial driver. Drain those bytes before deliberately
+    // pulsing DTR, then drain once more while the Uno bootloader is starting.
+    // The firmware's periodic hello remains the fallback for adapters that do
+    // not expose DTR or input-buffer clearing.
+    let _ = port.write_data_terminal_ready(false);
+    thread::sleep(Duration::from_millis(50));
+    let _ = port.clear(ClearBuffer::Input);
+    thread::sleep(Duration::from_millis(50));
+    let _ = port.clear(ClearBuffer::Input);
     let _ = port.write_data_terminal_ready(true);
+    thread::sleep(Duration::from_millis(100));
+    let _ = port.clear(ClearBuffer::Input);
 
     let active = start_serial_workers(app, port, port_name)?;
     manager.replace(active);
@@ -731,21 +743,23 @@ fn deliver_events(
         loop {
             match receiver.try_recv() {
                 Ok(SourceMessage::Event(ProtocolEvent::BoardHello { board, .. })) => {
-                    hello_received = true;
-                    validation::record_board(&app, board.clone());
-                    let _ = app.emit(EVENT_BOARD_INFO, board);
-                    emit_status(
-                        &app,
-                        ConnectionPhase::Connected,
-                        Some(mode),
-                        port_name.clone(),
-                        match mode {
-                            ConnectionMode::Serial => "ASV firmware connected".to_owned(),
-                            ConnectionMode::Mock => {
-                                "Mock Mode — no physical board connected".to_owned()
-                            }
-                        },
-                    );
+                    if !hello_received {
+                        hello_received = true;
+                        validation::record_board(&app, board.clone());
+                        let _ = app.emit(EVENT_BOARD_INFO, board);
+                        emit_status(
+                            &app,
+                            ConnectionPhase::Connected,
+                            Some(mode),
+                            port_name.clone(),
+                            match mode {
+                                ConnectionMode::Serial => "ASV firmware connected".to_owned(),
+                                ConnectionMode::Mock => {
+                                    "Mock Mode — no physical board connected".to_owned()
+                                }
+                            },
+                        );
+                    }
                 }
                 Ok(SourceMessage::Event(ProtocolEvent::DigitalGpio {
                     sequence,
