@@ -77,4 +77,16 @@ describe("Uno board activity indicators", () => {
     expect(markup).toContain("analog-activity-ring");
     expect(markup).toContain("input active at 512 of 1023");
   });
+
+  it("keeps permanent pin-role labels present in every workspace mode", () => {
+    const digitalMarkup = renderBoard(false, false, false, {}, "digital");
+    const analogMarkup = renderBoard(false, false, false, {}, "analog");
+    const pwmMarkup = renderBoard(false, false, false, {}, "pwm");
+
+    for (const label of ["LED", "SCK", "MISO", "MOSI", "SS", "TX", "RX"]) {
+      expect(digitalMarkup).toContain(`>${label}</text>`);
+      expect(analogMarkup).toContain(`>${label}</text>`);
+      expect(pwmMarkup).toContain(`>${label}</text>`);
+    }
+  });
 });

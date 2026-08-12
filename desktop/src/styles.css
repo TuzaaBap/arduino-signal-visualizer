@@ -898,6 +898,13 @@ button:focus-visible,
 
 .board-pin--unavailable {
   cursor: not-allowed;
+}
+
+/* Mode availability changes only the socket treatment. Pin numbers and
+   secondary-function labels describe permanent hardware capabilities, so
+   their colors must remain stable while switching workspace tabs. */
+.board-pin--unavailable .socket-body,
+.board-pin--unavailable circle {
   opacity: 0.32;
 }
 
@@ -908,6 +915,10 @@ button:focus-visible,
 
 .board-pin--inactive-mode {
   cursor: default;
+}
+
+.board-pin--inactive-mode .socket-body,
+.board-pin--inactive-mode circle {
   opacity: 0.72;
 }
 
