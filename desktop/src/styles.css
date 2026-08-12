@@ -18,6 +18,7 @@
   --teal-bright: #61ddd3;
   --green: #4be38a;
   --amber: #f7bd58;
+  --analog-input: #6aa9ff;
   --red: #ff6b72;
 }
 
@@ -861,6 +862,30 @@ button:focus-visible,
   stroke: #55aaa8;
 }
 
+.board-pin--analog-active .analog-activity-ring {
+  fill: none;
+  stroke: var(--analog-input);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 5px rgb(106 169 255 / 74%));
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: analog-input-pulse 1.25s ease-out infinite;
+}
+
+@keyframes analog-input-pulse {
+  0% {
+    opacity: 0.72;
+    transform: scale(0.72);
+  }
+
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+
 .board-pin--pwm-capable circle {
   stroke: #bc8d3f;
 }
@@ -1185,6 +1210,46 @@ button:focus-visible,
   font-size: 8px;
 }
 
+.analog-card-status {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.analog-card-title .analog-input-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--analog-input);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.analog-input-active i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--analog-input);
+  box-shadow: 0 0 7px rgb(106 169 255 / 88%);
+  animation: analog-status-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes analog-status-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 .analog-values {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1342,6 +1407,17 @@ button:focus-visible,
   color: #788994;
   font-size: 8px;
   line-height: 1.4;
+}
+
+.analog-disclaimer strong {
+  color: #a8bcc5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-pin--analog-active .analog-activity-ring,
+  .analog-input-active i {
+    animation: none;
+  }
 }
 
 .logic-badge--analog {

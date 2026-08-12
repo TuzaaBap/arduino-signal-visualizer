@@ -46,7 +46,15 @@ export function AnalogPanel({
             >
               <div className="analog-card-title">
                 <strong>A{channel}</strong>
-                <span>{state ? `${state.latest.resolutionBits}-bit` : "No data"}</span>
+                <div className="analog-card-status">
+                  <span>{state ? `${state.latest.resolutionBits}-bit` : "No data"}</span>
+                  {state && (
+                    <span className="analog-input-active">
+                      <i aria-hidden="true" />
+                      Input active
+                    </span>
+                  )}
+                </div>
               </div>
               <AnalogValues sample={state?.latest} />
               <Sparkline
@@ -59,8 +67,11 @@ export function AnalogPanel({
       </div>
 
       <p className="analog-disclaimer">
-        Trend graphs show instrumented ADC samples, not oscilloscope-grade
-        timing, bandwidth, or calibrated accuracy.
+        <strong>Waveform display limit:</strong> ASV is validated for recognizable
+        waveform shape up to 10 Hz. Above 10 Hz, ADC sampling, UART transport,
+        and UI timing may alias or miss transitions, so this graph must not be
+        treated as the true waveform. Use an oscilloscope or logic analyzer for
+        higher-frequency waveform measurements.
       </p>
     </section>
   );

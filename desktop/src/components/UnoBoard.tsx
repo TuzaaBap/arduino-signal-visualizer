@@ -1,3 +1,4 @@
+import { adcFullScale, type AnalogState } from "../domain/analog-store";
 import type { GpioState } from "../domain/gpio-store";
 import type { PwmState } from "../domain/pwm-store";
 import type { SerialLedVisibility } from "../domain/serial-led-state";
@@ -12,6 +13,7 @@ import {
 
 interface UnoBoardProps {
   pins: GpioState;
+  analog: AnalogState;
   pwm: PwmState;
   serialLeds: SerialLedVisibility;
   selectedDigitalPin: number;
@@ -71,6 +73,7 @@ function StaticHeaderSocket({
 
 export function UnoBoard({
   pins,
+  analog,
   pwm,
   serialLeds,
   selectedDigitalPin,
@@ -336,19 +339,39 @@ export function UnoBoard({
         <rect className="pin-header bottom-header" x="617" y="544" width="183" height="38" rx="4" />
         {UNO_R3_ANALOG_PINS.map((definition, index) => {
           const { channel, mcuPort, capabilities, boardMarking } = definition;
+          const analogState = analog[channel];
+          const analogLevel = analogState
+            ? Math.max(
+                0,
+                Math.min(
+                  1,
+                  analogState.latest.rawValue /
+                    adcFullScale(analogState.latest.resolutionBits),
+                ),
+              )
+            : 0;
           const selected = activeTab === "analog" && selectedAnalogChannel === channel;
           const selectable = activeTab === "analog";
+          const inputActive = selectable && analogState !== undefined;
           const x = 631 + index * 31;
           return (
             <g
               key={`analog-${channel}`}
               className={`board-pin board-pin--analog ${selected ? "board-pin--selected" : ""} ${
                 selectable ? "" : "board-pin--inactive-mode"
-              } ${boardMarking ? "board-pin--i2c" : ""}`}
+              } ${inputActive ? "board-pin--analog-active" : ""} ${
+                boardMarking ? "board-pin--i2c" : ""
+              }`}
               role="button"
               tabIndex={selectable ? 0 : -1}
               aria-disabled={!selectable}
-              aria-label={`Analog input A${channel}, digital D${definition.digitalPin}, ${mcuPort}${boardMarking ? `, I2C ${boardMarking}` : ""}`}
+              aria-label={`Analog input A${channel}, digital D${definition.digitalPin}, ${mcuPort}${
+                boardMarking ? `, I2C ${boardMarking}` : ""
+              }, ${
+                analogState
+                  ? `input active at ${analogState.latest.rawValue} of ${adcFullScale(analogState.latest.resolutionBits)}`
+                  : "not observed"
+              }`}
               onClick={() => selectable && onSelectAnalogChannel(channel)}
               onKeyDown={(event) => {
                 if (selectable && (event.key === "Enter" || event.key === " ")) {
@@ -358,11 +381,32 @@ export function UnoBoard({
               }}
             >
               <title>
-                A{channel} / D{definition.digitalPin} / {mcuPort}: ADC input and GPIO{boardMarking ? `, I2C ${boardMarking}` : ""}
+                A{channel} / D{definition.digitalPin} / {mcuPort}: ADC input and GPIO{boardMarking ? `, I2C ${boardMarking}` : ""}{analogState ? `; live input ${analogState.latest.rawValue} / ${adcFullScale(analogState.latest.resolutionBits)}` : "; waiting for input samples"}
               </title>
               <rect className="pin-hit-target" x={x - 14} y="505" width="28" height="82" fill="transparent" />
               <rect className="socket-body" x={x - 11} y="551" width="22" height="24" rx="2" />
-              <circle cx={x} cy="563" r="6" />
+              {inputActive && (
+                <circle
+                  className="analog-activity-ring"
+                  cx={x}
+                  cy="563"
+                  r="10"
+                  style={{ opacity: 0.28 + analogLevel * 0.42 }}
+                />
+              )}
+              <circle
+                cx={x}
+                cy="563"
+                r="6"
+                style={
+                  analogState
+                    ? {
+                        fill: `rgb(106 169 255 / ${0.24 + analogLevel * 0.76})`,
+                        filter: `drop-shadow(0 0 ${3 + analogLevel * 6}px rgb(106 169 255 / 82%))`,
+                      }
+                    : undefined
+                }
+              />
               <text className="analog-pin-number" x={x} y="533" textAnchor="middle">A{channel}</text>
               {boardMarking && <text className="analog-special-label" x={x} y="518" textAnchor="middle">{boardMarking}</text>}
             </g>

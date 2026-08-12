@@ -456,6 +456,7 @@ export function App() {
                   </div>
                   <UnoBoard
                     pins={pins}
+                    analog={analog}
                     pwm={pwm}
                     serialLeds={serialLeds}
                     selectedDigitalPin={selectedPin}
