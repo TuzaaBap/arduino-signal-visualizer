@@ -1,4 +1,4 @@
-# ASV wire protocol v1
+# ASV wire protocol v2
 
 ## Purpose
 
@@ -18,17 +18,19 @@ All multi-byte integers are little-endian.
 
 ## Framing
 
-The packet below is COBS encoded and followed by one `0x00` delimiter:
+Protocol-v2 frames use a leading `0x00`, a COBS-encoded packet, and a trailing
+`0x00`. Normal sketch Serial bytes remain outside these framed regions.
 
 | Offset | Size | Field |
 | --- | ---: | --- |
-| 0 | 1 | Protocol version |
-| 1 | 1 | Packet type |
-| 2 | 2 | Sequence number |
-| 4 | 4 | Board timestamp in microseconds |
-| 8 | 2 | Payload length |
-| 10 | N | Payload |
-| 10 + N | 2 | CRC-16/CCITT-FALSE |
+| 0 | 4 | ASCII magic `ASV2` |
+| 4 | 1 | Protocol version (`2`) |
+| 5 | 1 | Packet type |
+| 6 | 2 | Sequence number |
+| 8 | 4 | Board timestamp in microseconds |
+| 12 | 2 | Payload length |
+| 14 | N | Payload |
+| 14 + N | 2 | CRC-16/CCITT-FALSE |
 
 The CRC covers the header and payload, but not the CRC bytes, COBS overhead, or
 zero delimiter. Parameters are polynomial `0x1021`, initial value `0xFFFF`, no
@@ -39,7 +41,8 @@ until the next delimiter.
 
 ## Common fields
 
-`protocol version` is `1`. Other versions are rejected before payload decoding.
+`protocol version` is `2`. The receiver retains protocol-v1 decode support for
+existing firmware, but new firmware emits v2.
 
 `sequence number` increases for every transmitted packet and wraps after
 65535. Receivers use it to report missing, duplicate, and stale packets.
@@ -61,9 +64,9 @@ Sent once from `ASV.begin()` after the USB serial connection is ready.
 | 6 | 1 | Reset cause |
 | 7 | 2 | Nominal logic supply in millivolts |
 
-Capability bit 0 represents digital GPIO instrumentation. Capability bit 1
-represents instrumented ADC sampling. Capability bit 2 represents instrumented
-hardware PWM writes.
+Capability bits are: bit 0 digital GPIO, bit 1 ADC, bit 2 PWM, and bit 3
+separated user Serial. Bits 4 and 5 remain reserved for future hardware-
+validated bus instrumentation.
 
 Reset causes are `0` unknown, `1` power-on, `2` external, `3` brown-out,
 `4` watchdog, and `5` software.
@@ -178,6 +181,11 @@ loading, noise, and edge shape still require measurement hardware.
 
 ASV does not report non-PWM pins as PWM and does not model Arduino's digital
 fallback behavior on those pins.
+
+Packet type IDs `0x13` and `0x14` are reserved for future bus instrumentation.
+Version 0.6 does not emit or decode them. They must not be activated until the
+firmware, protocol, desktop behavior, and representative hardware have passed
+physical validation.
 
 ## Receiver fault handling
 

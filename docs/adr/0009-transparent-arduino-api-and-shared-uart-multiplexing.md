@@ -29,6 +29,10 @@ automatic instrumented lifecycle was physically validated on 2026-08-09.
 - A sequence number advances only after a complete COBS frame fits in and is
   accepted by the Uno hardware transmit buffer. Temporary UART pressure
   therefore cannot create a false missing-packet diagnostic.
+- Telemetry is paced to at most two thirds of the UART's configured 8N1 wire
+  capacity. The remaining third is reserved for normal sketch Serial output
+  and USB-bridge scheduling margin. Pacing operates on the same fixed latest-
+  state slots, so it cannot block a sketch or grow a queue.
 - The firmware sends a low-rate board hello beacon. On connection the desktop
   clears stale USB input, deliberately pulses DTR, and clears input once more
   while the bootloader starts. The beacon is a fallback when an adapter does
@@ -59,6 +63,8 @@ familiar while explicit v2 frame boundaries let the desktop demultiplex output.
   opt-in framed Serial proxy.
 - D0/D1 remain electrically shared with the USB UART.
 - At 115200 baud the 8N1 wire limit is 11,520 bytes per second. Current GPIO,
-  ADC, and PWM frames are 23, 27, and 43 bytes. Every state is delivered while
-  generated traffic remains within the link budget; above it, fixed slots
-  retain the newest state rather than pretending every transition was sampled.
+  ADC, and PWM frames are 23, 27, and 43 bytes. ASV budgets at most 7,680 bytes
+  per second for telemetry and preserves the rest for user traffic and timing
+  margin. Every state is delivered while generated traffic remains within that
+  telemetry budget; above it, fixed slots retain the newest state rather than
+  pretending every transition was sampled.

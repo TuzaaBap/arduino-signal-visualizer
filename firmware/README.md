@@ -56,6 +56,11 @@ fits. A busy UART does not create a partial ASV frame or a false sequence gap;
 if calls arrive faster than the physical link can carry them, the newest pending
 state replaces the older pending state for that signal.
 
+Telemetry is paced to at most two thirds of the configured UART's 8N1 wire
+capacity. The remaining third is reserved for normal sketch Serial output and
+USB bridge timing margin. This rate limit does not add a growing queue or delay
+the user's loop; it operates on the same bounded latest-state slots.
+
 Instrumented `analogRead()` returns the Arduino core result unchanged, then reports the
 channel, raw count, resolution, reference mode, integer reference millivolts,
 and board timestamp. The Uno does not calculate or transmit floating-point

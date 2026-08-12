@@ -29,12 +29,16 @@ jobs:
         run: npm ci
       - name: Check release version consistency
         run: npm run check:versions
+      - name: Test stable-release asset audit
+        run: python scripts/test_audit_release_assets.py
       - name: Type check
         run: npm run lint
       - name: Frontend tests
         run: npm test
       - name: Build frontend
         run: npm run build
+      - name: Audit production npm dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -94,6 +98,20 @@ jobs:
           --library firmware/ArduinoSignalVisualizer
           --warnings all
           firmware/ArduinoSignalVisualizer/examples/TransparentSerialDemo
+      - name: Compile standard Wire and SPI coexistence (not instrumented)
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/tests/sketches/ArduinoBusLibraryCoexistence
+      - name: Compile high-rate six-channel PWM regression
+        run: >-
+          arduino-cli compile
+          --fqbn arduino:avr:uno
+          --library firmware/ArduinoSignalVisualizer
+          --warnings all
+          firmware/tests/sketches/HighRateMultiPwm
       - name: Compile explicit API compatibility test
         run: >-
           arduino-cli compile

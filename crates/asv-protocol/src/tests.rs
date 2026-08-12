@@ -481,6 +481,25 @@ fn unsupported_version_is_rejected_before_payload_decoding() {
 }
 
 #[test]
+fn reserved_bus_packet_types_are_rejected_in_v06() {
+    for packet_type in [0x13_u8, 0x14_u8] {
+        let mut decoded = Vec::from(PROTOCOL_MAGIC);
+        decoded.push(PROTOCOL_VERSION);
+        decoded.push(packet_type);
+        decoded.extend_from_slice(&1_u16.to_le_bytes());
+        decoded.extend_from_slice(&2_u32.to_le_bytes());
+        decoded.extend_from_slice(&0_u16.to_le_bytes());
+        let crc = crc::crc16_ccitt_false(&decoded);
+        decoded.extend_from_slice(&crc.to_le_bytes());
+
+        assert_eq!(
+            decode_frame(&cobs::encode(&decoded)),
+            Err(ProtocolError::UnknownPacketType(packet_type))
+        );
+    }
+}
+
+#[test]
 fn declared_length_must_exactly_match_frame() {
     let packet = Packet {
         protocol_version: PROTOCOL_VERSION,

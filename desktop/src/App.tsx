@@ -10,10 +10,8 @@ import { PwmPanel } from "./components/PwmPanel";
 import { SerialInspector } from "./components/SerialInspector";
 import { SerialMonitor } from "./components/SerialMonitor";
 import { UnoBoard } from "./components/UnoBoard";
-import {
-  applyAdcSamples,
-  type AnalogState,
-} from "./domain/analog-store";
+import { UpdatePrompt } from "./components/UpdatePrompt";
+import { applyAdcSamples, type AnalogState } from "./domain/analog-store";
 import { applyGpioUpdates, type GpioState } from "./domain/gpio-store";
 import { applyPwmUpdates, type PwmState } from "./domain/pwm-store";
 import {
@@ -40,6 +38,7 @@ import type {
   UserSerialBatch,
 } from "./domain/types";
 import { useFramesPerSecond } from "./hooks/use-performance-metrics";
+import { useAppUpdater } from "./hooks/use-app-updater";
 import {
   backendAvailable,
   acknowledgeValidationAdc,
@@ -90,6 +89,7 @@ export function App() {
   const packetCounter = useRef(0);
   const diagnosticId = useRef(0);
   const fps = useFramesPerSecond();
+  const updater = useAppUpdater(backendReady);
 
   const appendDiagnostic = useCallback((diagnostic: ProtocolDiagnostic) => {
     diagnosticId.current += 1;
@@ -304,10 +304,7 @@ export function App() {
     }
   }, []);
 
-  const connectedPinCount = useMemo(
-    () => Object.keys(pins).length,
-    [pins],
-  );
+  const connectedPinCount = useMemo(() => Object.keys(pins).length, [pins]);
   const observedAnalogCount = useMemo(
     () => Object.keys(analog).length,
     [analog],
@@ -330,14 +327,28 @@ export function App() {
           </span>
           <div>
             <h1>Arduino Signal Visualizer</h1>
-            <p>GPIO, ADC, and PWM instrumentation workspace</p>
+            <p>GPIO, ADC, PWM, and Serial instrumentation workspace</p>
           </div>
         </div>
-        <div className={`header-status header-status--${status.phase}`}>
-          <span />
-          {status.phase === "waitingForHello"
-            ? "Waiting for firmware"
-            : status.phase}
+        <div className="header-actions">
+          <button
+            type="button"
+            className="update-check-button"
+            disabled={!backendReady || updater.state.phase === "checking"}
+            onClick={updater.checkNow}
+          >
+            {updater.state.phase === "checking"
+              ? "Checking…"
+              : updater.state.phase === "upToDate"
+                ? "Up to date"
+                : "Check for updates"}
+          </button>
+          <div className={`header-status header-status--${status.phase}`}>
+            <span />
+            {status.phase === "waitingForHello"
+              ? "Waiting for firmware"
+              : status.phase}
+          </div>
         </div>
       </header>
 
@@ -366,7 +377,7 @@ export function App() {
               <Metric label="Board" value="Arduino Uno" />
               <Metric label="Firmware" value={firmware} />
               <Metric label="Port" value={status.portName ?? "—"} />
-              <Metric label="App" value="0.5.1" />
+              <Metric label="App" value="0.6.0" />
               <Metric label="Render" value={`${fps} FPS`} />
               <Metric label="Packets" value={`${packetRate}/s`} />
             </div>
@@ -382,13 +393,19 @@ export function App() {
           <div className="board-workspace-heading">
             <div>
               <p className="eyebrow">
-                {activeTab === "serial" ? "Separated user stream" : "Interactive board"}
+                {activeTab === "serial"
+                  ? "Separated user stream"
+                  : "Interactive board"}
               </p>
               <h2 id="board-heading">
                 {activeTab === "serial" ? "Serial Monitor" : "Arduino Uno"}
               </h2>
             </div>
-            <div className="workspace-tabs" role="tablist" aria-label="Signal type">
+            <div
+              className="workspace-tabs"
+              role="tablist"
+              aria-label="Signal type"
+            >
               <button
                 type="button"
                 role="tab"
@@ -525,6 +542,13 @@ export function App() {
           <SerialInspector state={userSerial} />
         )}
       </main>
+      <UpdatePrompt
+        state={updater.state}
+        onDownload={updater.downloadAndInstall}
+        onCheckAgain={updater.checkNow}
+        onSkip={updater.skip}
+        onNotNow={updater.notNow}
+      />
     </div>
   );
 }

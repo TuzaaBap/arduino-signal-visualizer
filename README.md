@@ -3,8 +3,8 @@
 Arduino Signal Visualizer (ASV) turns operations from a real Arduino Uno into
 live, understandable visuals for students, teachers, and self-learners.
 
-[Download the current beta](https://github.com/TuzaaBap/arduino-signal-visualizer/releases/tag/v0.5.1-beta.1) ·
-[Read the validation report](docs/beta-usability-validation.md) ·
+[Download the current stable release](https://github.com/TuzaaBap/arduino-signal-visualizer/releases/tag/v0.6.0) ·
+[Read the validation report](docs/v0.6-stable-validation.md) ·
 [Report a problem](https://github.com/TuzaaBap/arduino-signal-visualizer/issues)
 
 ![Arduino Signal Visualizer disconnected application with an Arduino Uno selected on COM6](docs/images/readme/01-app-overview-live.png)
@@ -56,33 +56,30 @@ calls in `setup()` or `loop()`.
 - The matching ASV desktop installer and Arduino library ZIP from the same
   release.
 
-The v0.5.1 beta is specifically validated for the Arduino Uno. ESP32 and other
-boards are not supported by this build.
+The v0.6.0 stable release is specifically validated for the Arduino Uno. ESP32
+and other boards are not supported by this build.
 
-## Install the beta
+## Install the stable release
 
 ### 1. Download the desktop app and library
 
-Open the [v0.5.1 beta release](https://github.com/TuzaaBap/arduino-signal-visualizer/releases/tag/v0.5.1-beta.1)
+Open the [v0.6.0 stable release](https://github.com/TuzaaBap/arduino-signal-visualizer/releases/tag/v0.6.0)
 and download two files:
 
 | Computer                     | Desktop file                                            |
 | ---------------------------- | ------------------------------------------------------- |
-| Windows 10/11 x64            | `Arduino-Signal-Visualizer-0.5.1-windows-x64-setup.exe` |
-| Managed Windows installation | `Arduino-Signal-Visualizer-0.5.1-windows-x64.msi`       |
-| Apple-silicon Mac            | `Arduino-Signal-Visualizer-0.5.1-darwin-aarch64.dmg`    |
-| Intel Mac                    | `Arduino-Signal-Visualizer-0.5.1-darwin-x64.dmg`        |
+| Windows 10/11 x64            | `Arduino-Signal-Visualizer-0.6.0-windows-x64-setup.exe` |
+| Managed Windows installation | `Arduino-Signal-Visualizer-0.6.0-windows-x64.msi`       |
+| Apple-silicon Mac            | `Arduino-Signal-Visualizer-0.6.0-darwin-aarch64.dmg`    |
+| Intel Mac                    | `Arduino-Signal-Visualizer-0.6.0-darwin-x64.dmg`        |
 
 Everyone also needs:
 
-`ArduinoSignalVisualizer-0.5.1.zip`
+`ArduinoSignalVisualizer-0.6.0.zip`
 
 Do not download source-code ZIPs instead of the Arduino library ZIP.
 
-The public `v0.5.1-beta.1` artifacts are the current installable preview. The
-`main` branch includes additional UART reliability work completed after that
-artifact build; publish the next tagged beta before a managed classroom-wide
-rollout.
+The desktop application and Arduino library must have the same release version.
 
 ### 2. Install the desktop app
 
@@ -90,7 +87,7 @@ On Windows, use the setup executable unless a school administrator specifically
 requires the MSI. On macOS, open the DMG matching the Mac processor and move the
 application into Applications.
 
-The beta is not commercially code-signed or Apple-notarized yet. Windows
+The installers are not commercially code-signed or Apple-notarized yet. Windows
 SmartScreen or macOS Gatekeeper may request confirmation. Only approve the app
 when it was downloaded from this repository's release page. Do not disable
 Windows Application Control, antivirus, SmartScreen, or Gatekeeper globally.
@@ -100,7 +97,7 @@ Windows Application Control, antivirus, SmartScreen, or Gatekeeper globally.
 In Arduino IDE 2:
 
 1. Select **Sketch → Include Library → Add .ZIP Library…**
-2. Choose `ArduinoSignalVisualizer-0.5.1.zip`.
+2. Choose `ArduinoSignalVisualizer-0.6.0.zip`.
 3. Wait for the installation confirmation.
 4. Confirm that **File → Examples → ArduinoSignalVisualizer** contains the ASV
    examples.
@@ -108,6 +105,20 @@ In Arduino IDE 2:
 Do not unzip the library before using **Add .ZIP Library**. If Arduino IDE says
 the library already exists, remove the older `ArduinoSignalVisualizer` library
 or install the matching newer release before testing.
+
+## Application updates
+
+Beginning with v0.6, an installed ASV app checks the project's published GitHub
+releases for a newer signed application package. The prompt offers three clear
+choices: **Download & install**, **Skip this version**, or **Not now**. A manual
+**Check for updates** button is also available in the app header.
+
+Every offered package must pass Tauri's embedded updater-signature check before
+installation. Update failures are isolated from the serial connection, so they
+cannot take ownership of the Uno port or alter GPIO, ADC, PWM, or Serial data.
+The updater signature does not replace commercial Windows code signing or Apple
+notarization; the operating-system warnings described above may still
+appear.
 
 ## Run your first sketch
 
@@ -243,9 +254,11 @@ The Uno has one USB UART with finite bandwidth. At 115200 baud, the physical
 maximum is approximately 11,520 bytes per second using 8N1 framing.
 
 ASV uses fixed, bounded latest-state slots for GPIO, ADC, and PWM and services
-them fairly. Sequence numbers advance only after a complete frame enters the
-UART. This prevents memory growth, partial ASV frames, and false packet-gap
-warnings when the UART is busy.
+them fairly. Telemetry is limited to two thirds of the configured UART wire
+capacity, leaving one third for the sketch's Serial output and USB timing
+margin. Sequence numbers advance only after a complete frame enters the UART.
+This prevents memory growth, partial ASV frames, and false packet-gap warnings
+when the UART is busy.
 
 When a sketch generates states faster than the UART can transport them, ASV
 preserves the newest pending state for each signal. It does not claim to record
@@ -303,20 +316,21 @@ Board data stays between the Uno and the local desktop process.
 | App waits for firmware                   | Upload a sketch containing `#include <ASVInstrumented.h>`, close Serial Monitor, choose the same baud, and reconnect.                                                             |
 | Serial text is unreadable                | Match the app baud rate to `Serial.begin(...)`. The default is 115200.                                                                                                            |
 | Diagnostics or CRC count increases       | Check baud, cable quality, USB stability, and whether sketch code writes arbitrary binary containing ASV delimiter bytes.                                                         |
-| Arduino IDE cannot install ZIP           | Select the named `ArduinoSignalVisualizer-0.5.1.zip`, not GitHub's source-code archive and not an already-unzipped folder.                                                        |
-| Windows or macOS warns about the app     | Verify it came from this repository's release page. The current beta is unsigned; do not disable operating-system security globally.                                              |
-| App shows `localhost refused to connect` | A development launcher was opened without its frontend server. Install and start the packaged beta from the Start menu or Applications folder.                                    |
+| Arduino IDE cannot install ZIP           | Select the named `ArduinoSignalVisualizer-0.6.0.zip`, not GitHub's source-code archive and not an already-unzipped folder.                                                        |
+| Windows or macOS warns about the app     | Verify it came from this repository's release page. The installer lacks commercial OS signing; do not disable operating-system security globally.                                |
+| App shows `localhost refused to connect` | A development launcher was opened without its frontend server. Install and start the packaged stable app from the Start menu or Applications folder.                              |
 
 If a failure continues, create a
 [GitHub issue](https://github.com/TuzaaBap/arduino-signal-visualizer/issues)
 with operating system, app version, Arduino board, port, baud rate, sketch, and
 the exact error text. Do not post passwords, tokens, or unrelated serial data.
 
-## Beta boundaries
+## Release boundaries
 
 - The supported board is Arduino Uno R3/ATmega328P.
-- SPI, I2C, and protocol decoding are not implemented yet; their pin roles are
-  shown only as educational board labels.
+- I2C and SPI instrumentation are intentionally disabled in v0.6 until they are
+  validated with representative peripheral hardware. Their physical Uno pin
+  roles remain visible only as educational board labels.
 - PWM is timer-derived configured behavior, not sampled pin voltage.
 - ADC voltage uses declared reference metadata and is not factory-calibrated.
 - Digital state reflects instrumented Arduino calls, not an asynchronous
@@ -330,12 +344,13 @@ accuracy the Uno and shared UART cannot provide.
 
 ## Validation
 
-The current main-branch candidate was physically tested with 15 beginner-style
-sketches and a continuous 30-minute mixed GPIO, ADC, PWM, and user-Serial run.
-It recorded zero CRC failures, protocol diagnostics, packet warnings, user
-Serial drops, crashes, or unbounded memory growth. See
-[docs/beta-usability-validation.md](docs/beta-usability-validation.md) for exact
-counts and memory results.
+The v0.6.0 release was physically tested with 15 beginner-style sketches, a
+continuous 30-minute mixed GPIO/ADC/PWM/Serial run, and a separate 30-minute
+high-rate six-channel PWM regression with forced reconnect. It recorded zero
+CRC failures, protocol diagnostics, missing-packet warnings, user-Serial drops,
+crashes, or unbounded memory growth. See
+[docs/v0.6-stable-validation.md](docs/v0.6-stable-validation.md) for exact counts
+and limitations.
 
 ## Development and architecture
 

@@ -1,4 +1,4 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
@@ -123,4 +123,35 @@ export async function acknowledgeValidationPwm(
   pins: PwmUiPinState[],
 ): Promise<void> {
   return invoke("validation_acknowledge_pwm", { pins });
+}
+
+export interface UpdateMetadata {
+  version: string;
+  currentVersion: string;
+  notes: string | null;
+  publishedAt: string | null;
+  releaseUrl: string;
+  prerelease: boolean;
+}
+
+export type UpdateDownloadEvent =
+  | { event: "started"; data: { contentLength: number | null } }
+  | { event: "progress"; data: { chunkLength: number } }
+  | { event: "installing" }
+  | { event: "complete" };
+
+export async function checkForUpdate(): Promise<UpdateMetadata | null> {
+  return invoke<UpdateMetadata | null>("check_for_update");
+}
+
+export async function installUpdate(
+  onEvent: (event: UpdateDownloadEvent) => void,
+): Promise<void> {
+  const channel = new Channel<UpdateDownloadEvent>();
+  channel.onmessage = onEvent;
+  return invoke("install_update", { onEvent: channel });
+}
+
+export async function dismissUpdate(): Promise<void> {
+  return invoke("dismiss_update");
 }

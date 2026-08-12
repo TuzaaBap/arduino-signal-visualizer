@@ -359,9 +359,9 @@ export function UnoBoard({
               key={`analog-${channel}`}
               className={`board-pin board-pin--analog ${selected ? "board-pin--selected" : ""} ${
                 selectable ? "" : "board-pin--inactive-mode"
-              } ${inputActive ? "board-pin--analog-active" : ""} ${
-                boardMarking ? "board-pin--i2c" : ""
-              }`}
+               } ${inputActive ? "board-pin--analog-active" : ""} ${
+                 boardMarking ? "board-pin--i2c" : ""
+               }`}
               role="button"
               tabIndex={selectable ? 0 : -1}
               aria-disabled={!selectable}

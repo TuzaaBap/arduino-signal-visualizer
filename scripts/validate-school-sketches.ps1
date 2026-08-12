@@ -106,10 +106,10 @@ foreach ($test in $tests) {
     }
   }
 
-  if ($report.applicationVersion -ne "0.5.1" -or
+  if ($report.applicationVersion -ne "0.6.0" -or
       $report.board.firmwareVersion.major -ne 0 -or
-      $report.board.firmwareVersion.minor -ne 5 -or
-      $report.board.firmwareVersion.patch -ne 1) {
+      $report.board.firmwareVersion.minor -ne 6 -or
+      $report.board.firmwareVersion.patch -ne 0) {
     throw "Version mismatch in $($test.Name)"
   }
   if ($report.statusHistory.phase -contains "error" -or
@@ -181,8 +181,8 @@ $summary = [pscustomobject]@{
   createdAt = (Get-Date).ToString("o")
   port = $Port
   fqbn = "arduino:avr:uno"
-  applicationVersion = "0.5.1"
-  firmwareVersion = "0.5.1"
+  applicationVersion = "0.6.0"
+  firmwareVersion = "0.6.0"
   testCount = $results.Count
   passed = $results.Count
   failed = 0

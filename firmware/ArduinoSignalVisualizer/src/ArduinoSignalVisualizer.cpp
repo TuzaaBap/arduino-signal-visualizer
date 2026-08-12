@@ -17,6 +17,9 @@ ArduinoSignalVisualizer::ArduinoSignalVisualizer()
       pendingPwmMask_(0),
       serviceCursor_(0),
       lastHelloMs_(0),
+      nextPacketEarliestUs_(0),
+      transportBaud_(kDefaultBaud),
+      packetSent_(false),
       helloPending_(false) {
   for (uint8_t pin = 0; pin < kDigitalPinCount; ++pin) {
     pinModes_[pin] = kUnknownMode;
@@ -43,6 +46,9 @@ void ArduinoSignalVisualizer::attach(HardwareSerial& serial) {
   transport_ = &serial;
   sequence_ = 0;
   serviceCursor_ = 0;
+  transportBaud_ = configuredSerialBaud();
+  nextPacketEarliestUs_ = micros();
+  packetSent_ = false;
   helloPending_ = true;
   pendingDigitalMask_ = observedDigitalMask_;
   pendingAnalogMask_ = observedAnalogMask_;
@@ -218,7 +224,7 @@ void ArduinoSignalVisualizer::queuePwm(uint8_t pin, uint8_t dutyValue) {
 bool ArduinoSignalVisualizer::sendHello() {
   const uint8_t payload[] = {
       1,     // Arduino Uno R3
-      0, 5, 1,  // firmware 0.5.1
+      0, 6, 0,  // firmware 0.6.0
       15, 0,  // digital GPIO, ADC, PWM, and transparent Serial capabilities
       0,     // reset cause is unknown in the portable v1 implementation
       0x88, 0x13,  // 5000 mV
@@ -300,6 +306,12 @@ bool ArduinoSignalVisualizer::sendPacket(uint8_t packetType,
     return false;
   }
 
+  const unsigned long now = micros();
+  if (packetSent_ &&
+      static_cast<int32_t>(now - nextPacketEarliestUs_) < 0) {
+    return false;
+  }
+
   // HardwareSerial has a small fixed transmit buffer on the Uno. A frame is
   // queued only when it fits in full, so user Serial output is never split by
   // telemetry and a busy UART does not create a false sequence gap.
@@ -310,6 +322,8 @@ bool ArduinoSignalVisualizer::sendPacket(uint8_t packetType,
     return false;
   }
   ++sequence_;
+  nextPacketEarliestUs_ = now + packetSpacingUs(frameLength);
+  packetSent_ = true;
   return true;
 }
 
@@ -495,4 +509,35 @@ uint8_t ArduinoSignalVisualizer::outputPolarity(uint8_t controlA,
     return 2;
   }
   return 0xff;
+}
+
+uint32_t ArduinoSignalVisualizer::configuredSerialBaud() const {
+#if defined(UBRR0H) && defined(UBRR0L) && defined(UCSR0A) && defined(U2X0)
+  uint16_t divisorRegister = 0;
+  bool doubleSpeed = false;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    divisorRegister = static_cast<uint16_t>(UBRR0L) |
+                      (static_cast<uint16_t>(UBRR0H) << 8);
+    doubleSpeed = (UCSR0A & _BV(U2X0)) != 0;
+  }
+  const uint32_t oversampling = doubleSpeed ? 8UL : 16UL;
+  const uint32_t divisor = oversampling *
+                           (static_cast<uint32_t>(divisorRegister) + 1UL);
+  if (divisor != 0) {
+    return (F_CPU + divisor / 2UL) / divisor;
+  }
+#endif
+  return kDefaultBaud;
+}
+
+unsigned long ArduinoSignalVisualizer::packetSpacingUs(
+    size_t frameLength) const {
+  // One UART byte uses ten wire bits in the normal 8N1 format. Round upward so
+  // integer arithmetic never exceeds the selected telemetry share.
+  const uint32_t denominator =
+      transportBaud_ * static_cast<uint32_t>(kTelemetryShareNumerator);
+  const uint32_t numerator =
+      static_cast<uint32_t>(frameLength) * 10UL * 1000000UL *
+      static_cast<uint32_t>(kTelemetryShareDenominator);
+  return denominator == 0 ? 1UL : (numerator + denominator - 1UL) / denominator;
 }

@@ -426,10 +426,10 @@ fn start_mock_workers(app: AppHandle) -> ActiveConnection {
             board_type: asv_protocol::BoardType::ArduinoUnoR3,
             firmware_version: asv_protocol::FirmwareVersion {
                 major: 0,
-                minor: 3,
+                minor: 6,
                 patch: 0,
             },
-            capabilities: 7,
+            capabilities: 15,
             reset_cause: asv_protocol::ResetCause::Software,
             nominal_logic_mv: 5_000,
         };

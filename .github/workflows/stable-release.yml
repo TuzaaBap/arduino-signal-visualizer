@@ -1,24 +1,18 @@
-name: Beta Release
+name: Stable Release
 
 on:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Beta tag matching the source version, for example v0.5.1-beta.1
-        required: true
-        default: v0.5.1-beta.1
-        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: beta-release-${{ inputs.tag }}
+  group: stable-release
   cancel-in-progress: false
 
 jobs:
   prepare:
-    name: Prepare draft prerelease
+    name: Prepare draft stable release
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
@@ -29,26 +23,25 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
           version="$(python scripts/check_release_versions.py --print-version)"
-          prefix="v${version}-beta."
-          beta_number="${TAG#"$prefix"}"
-          if [[ "$TAG" != "$prefix"* || ! "$beta_number" =~ ^[1-9][0-9]*$ ]]; then
-            echo "Tag $TAG must match v${version}-beta.N, where N is positive" >&2
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          tag="v${version}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
+          if gh release view "$tag" >/dev/null 2>&1; then
+            state="$(gh release view "$tag" --json isDraft --jq .isDraft)"
+            test "$state" = "true" || {
+              echo "Stable release $tag already exists and is not a draft" >&2
+              exit 1
+            }
+          else
+            gh release create "$tag" \
               --target "$GITHUB_SHA" \
-              --title "Arduino Signal Visualizer $TAG" \
-              --notes-file docs/beta-release-notes.md \
-              --draft \
-              --prerelease
+              --title "Arduino Signal Visualizer $tag" \
+              --notes-file docs/release-notes-v0.6.0.md \
+              --draft
           fi
 
   desktop:
@@ -57,6 +50,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # The action merges each platform into one latest.json asset. Serializing
+      # stable builds removes the possibility of concurrent read/modify/write
+      # races in that public updater manifest.
+      max-parallel: 1
       matrix:
         include:
           - label: Windows x64
@@ -84,7 +81,7 @@ jobs:
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.rust_target }}
-      - name: Build and attach installer
+      - name: Build and attach signed updater package and installer
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,7 +93,7 @@ jobs:
           tauriScript: npm run tauri
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseDraft: true
-          prerelease: true
+          prerelease: false
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           retryAttempts: 3
@@ -116,7 +113,7 @@ jobs:
           arduino-cli core install arduino:avr
       - name: Build deterministic library ZIP
         run: python scripts/package_arduino_library.py --output-dir outputs/release
-      - name: Install ZIP into isolated Arduino directory
+      - name: Install ZIP and compile every public example
         shell: bash
         run: |
           set -euo pipefail
@@ -146,3 +143,32 @@ jobs:
           outputs/release/ArduinoSignalVisualizer-${{ needs.prepare.outputs.version }}.zip
           outputs/release/ArduinoSignalVisualizer-${{ needs.prepare.outputs.version }}.zip.sha256
           --clobber
+
+  audit:
+    name: Audit complete draft release
+    needs:
+      - prepare
+      - desktop
+      - arduino-library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download draft assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          mkdir release-assets
+          gh release download "$TAG" --dir release-assets
+      - name: Validate installers, updater manifest, signatures, and ZIP
+        run: >-
+          python scripts/audit_release_assets.py
+          --asset-dir release-assets
+          --version ${{ needs.prepare.outputs.version }}
+      - name: Attach complete SHA-256 manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release upload "$TAG" release-assets/SHA256SUMS.txt --clobber
+      - name: Mark draft ready for human publication
+        run: echo "Draft ${{ needs.prepare.outputs.tag }} passed the complete asset audit." >> "$GITHUB_STEP_SUMMARY"

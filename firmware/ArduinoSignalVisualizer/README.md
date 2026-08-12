@@ -7,8 +7,7 @@ in the application's separate Serial Monitor.
 
 ## Install in Arduino IDE 2
 
-1. Download `ArduinoSignalVisualizer-0.5.1.zip` from the matching GitHub beta
-   release.
+1. Download `ArduinoSignalVisualizer-0.6.0.zip` from the stable GitHub release.
 2. In Arduino IDE, select **Sketch > Include Library > Add .ZIP Library...**.
 3. Select the downloaded ZIP.
 4. Open **File > Examples > ArduinoSignalVisualizer > BareMinimum**.

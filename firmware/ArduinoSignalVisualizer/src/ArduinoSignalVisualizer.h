@@ -49,6 +49,11 @@ class ArduinoSignalVisualizer {
       kDigitalPinCount + kAnalogChannelCount + kDigitalPinCount;
   static constexpr uint8_t kUnknownMode = 0xff;
   static constexpr uint8_t kUnknownAnalogChannel = 0xff;
+  // Leave one third of the configured UART throughput available for the
+  // sketch's Serial traffic and USB bridge scheduling. Pending telemetry is
+  // latest-state data, so pacing never grows a queue or blocks the sketch.
+  static constexpr uint8_t kTelemetryShareNumerator = 2;
+  static constexpr uint8_t kTelemetryShareDenominator = 3;
 
   HardwareSerial* transport_;
   uint16_t sequence_;
@@ -67,6 +72,9 @@ class ArduinoSignalVisualizer {
   uint8_t lastPwmValues_[kDigitalPinCount];
   uint8_t serviceCursor_;
   unsigned long lastHelloMs_;
+  unsigned long nextPacketEarliestUs_;
+  uint32_t transportBaud_;
+  bool packetSent_;
   bool helloPending_;
 
   bool sendHello();
@@ -87,6 +95,8 @@ class ArduinoSignalVisualizer {
   uint16_t timer01Prescaler(uint8_t clockSelect) const;
   uint16_t timer2Prescaler(uint8_t clockSelect) const;
   uint8_t outputPolarity(uint8_t controlA, uint8_t channel) const;
+  uint32_t configuredSerialBaud() const;
+  unsigned long packetSpacingUs(size_t frameLength) const;
 };
 
 extern ArduinoSignalVisualizer ASV;

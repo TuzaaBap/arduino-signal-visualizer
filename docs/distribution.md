@@ -1,8 +1,8 @@
-# Distribution and beta release process
+# Distribution and release process
 
 ## Release contents
 
-One beta tag produces matching artifacts for the same source revision:
+One release tag produces matching artifacts for the same source revision:
 
 | Audience            | Artifact                                          | Build host       |
 | ------------------- | ------------------------------------------------- | ---------------- |
@@ -17,9 +17,27 @@ ZIP is deterministic and has one top-level `ArduinoSignalVisualizer` folder,
 matching the official Arduino library layout. Its install test uses a fresh
 Arduino user directory and compiles all five installed examples.
 
-## Manual beta workflow
+Each desktop build also creates a signed updater artifact. The release action
+merges Windows, Apple-silicon macOS, and Intel macOS entries into one
+`latest.json` asset. Published application versions can then discover the
+release and offer **Download & install**, **Skip this version**, or **Not now**.
 
-The **Beta Release** GitHub Actions workflow requires an explicit tag input such
+## Stable workflow
+
+The **Stable Release** GitHub Actions workflow derives the exact `vX.Y.Z` tag
+from the version checked into `main`. It creates a draft, builds all desktop and
+Arduino artifacts, and runs `scripts/audit_release_assets.py`. The audit rejects
+the draft if an installer, updater platform, signature, Arduino ZIP, or download
+target is missing. It also publishes `SHA256SUMS.txt`.
+
+The workflow never publishes automatically. After all jobs pass, a maintainer
+must inspect the draft and explicitly make it public. This keeps a partial
+Windows/macOS matrix from ever becoming the public stable release.
+
+## Preview workflow
+
+The **Beta Release** GitHub Actions workflow remains available for an explicit
+preview tag input such
 as `v0.5.1-beta.1`. The tag must match the version in `library.properties`.
 The workflow creates a draft prerelease, then attaches all successful platform
 artifacts. A maintainer reviews the draft and download names before making it
@@ -31,7 +49,28 @@ Before starting the workflow:
 2. Confirm the version agrees in Cargo, npm, Tauri, firmware hello, and
    `library.properties`.
 3. Complete the physical validation required by the feature milestone.
-4. Review the beta notes and known limitations.
+4. Review the release notes and known limitations.
+5. Confirm the repository Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` exist.
+
+Every installable release must increment the application SemVer. Tags such as
+`v0.7.0-beta.1` and `v0.7.0-beta.2` both install application version `0.7.0`,
+so the second tag is a replacement build rather than an update for users who
+already installed the first. Use `0.7.1` (or the next intended version) when an
+existing installed beta must receive another updater notification.
+
+After every platform job succeeds, inspect the draft release before publishing:
+
+1. Confirm `latest.json` exists.
+2. Confirm it contains `windows-x86_64`, `darwin-aarch64`, and
+   `darwin-x86_64` platform entries with non-empty signatures and URLs.
+3. Confirm the matching updater bundles and `.sig` assets exist.
+4. Test an update from the preceding installed version on Windows and macOS.
+
+The updater private key is not a replaceable build cache. It must remain outside
+Git, be backed up in a protected offline location, and match the public key in
+`desktop/src-tauri/tauri.conf.json`. Losing it means existing installations
+cannot authenticate later releases.
 
 ## Local Arduino ZIP
 
@@ -66,19 +105,25 @@ it on **Disconnect** or application exit, and provides its own Serial tab for
 normal sketch input/output.
 
 Transparent mode supports ordinary text. Strict framing of arbitrary binary
-user traffic is outside the 0.5.1 beta and must not be implied in release copy.
+user traffic is outside v0.6 and must not be implied in release copy.
 
 ## Signing status
 
-The initial beta is intentionally labelled unsigned:
+The v0.6 stable release has cryptographically signed updater packages, but its
+operating-system installers do not yet have commercial publisher identities:
 
 - Windows installers run but may trigger Microsoft SmartScreen because no
   public code-signing certificate is configured.
 - macOS bundles use Tauri's ad-hoc identity (`-`). Gatekeeper still requires the
   user to allow the application in **Privacy & Security**.
 
-Public production distribution requires credentials, not a source-code
-workaround. The production gate is:
+Application updates are separately signed with Tauri's updater key so installed
+ASV copies can reject altered update packages. That technical package signature
+does not identify the publisher to Windows or Apple and does not remove
+SmartScreen or Gatekeeper confirmation.
+
+Removing the Windows and macOS trust prompts requires credentials, not a
+source-code workaround. The commercial-signing gate is:
 
 1. Windows code-signing identity or managed signing service.
 2. Apple Developer ID Application certificate.
