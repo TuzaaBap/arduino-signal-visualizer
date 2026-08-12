@@ -63,11 +63,13 @@ jobs:
           - label: macOS Apple silicon
             os: macos-15
             rust_target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --bundles dmg
+            # The app target produces the signed .app.tar.gz updater payload;
+            # DMG alone is an installer and is not updater-enabled in Tauri.
+            args: --target aarch64-apple-darwin --bundles app,dmg
           - label: macOS Intel
             os: macos-15-intel
             rust_target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin --bundles dmg
+            args: --target x86_64-apple-darwin --bundles app,dmg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
