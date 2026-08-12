@@ -138,6 +138,56 @@ Raw stability evidence is retained locally under
 regression under
 `work/hardware-validation/v5-security-regression-20260812-040233/`.
 
+## Full-I/O hardware confirmation
+
+A second 30-minute physical run exercised the complete v5 classroom workload
+at once. Six ordinary digital outputs (D2, D4, D7, D8, D12, and D13) toggled,
+all six hardware-PWM outputs faded from 0 through 255, all six analog inputs
+were sampled, and normal user Serial text shared the UART with ASV telemetry.
+D3, D5, D6, and D9 were connected directly to A1, A3, A4, and A5 to verify
+the PWM LOW/HIGH endpoints. A0 and A2 remained connected to the external
+10 Hz waveform generator. The test firmware used 6,054 bytes of flash (18%)
+and 406 bytes of SRAM (19%).
+
+| Measurement | Result |
+| --- | ---: |
+| Physical test window | 1,805.828 s |
+| Memory samples | 61 |
+| GPIO updates | 43,063 |
+| ADC samples | 400,393 |
+| PWM updates | 93,162 |
+| User-Serial bytes | 65,495 |
+| Maximum ADC UI buffer | 180 samples |
+| Maximum PWM UI buffer | 180 samples |
+| CRC failures | 0 |
+| Protocol diagnostics | 0 |
+| Dropped-packet warnings | 0 |
+| Dropped user-Serial bytes | 0 |
+
+Every PWM pin produced exactly 15,527 updates and covered duty values 0-255.
+The direct loopback channels A1, A3, A4, and A5 each covered raw ADC values
+0-1023. A0 and A2 each produced 66,732 samples and covered 0-573 counts from
+the external generator. GPIO, ADC, and PWM UI state all matched the backend.
+
+The same application process completed the midpoint recovery sequence
+`waitingForHello -> connected -> disconnected -> waitingForHello -> connected`
+without a diagnostic or dropped packet. Across steady-state samples after the
+first ten minutes, working-set slope was +0.15 KiB/min, private-memory slope was
+-2.76 KiB/min, and the handle-count range was two. No unbounded growth was
+observed.
+
+An immediately preceding 30-minute run observed one two-packet sequence gap
+at its forced reconnect boundary. CRC, queue-drop, Serial-drop, UI-state, and
+memory checks remained clean. Five consecutive short reconnect stress cycles
+then completed with zero diagnostics, followed by the clean full confirmation
+above. The sequence detector was intentionally retained: suppressing a
+non-reproducible warning would also hide genuine within-session packet loss.
+
+Raw evidence is retained locally under
+`work/hardware-validation/full-system-stability-20260812-050503/`,
+`work/hardware-validation/reconnect-stress-20260812-053828/`, and
+`work/hardware-validation/full-system-confirmation-20260812-054053/`.
+
 ## Release artifacts
 
 | Artifact | Size | SHA-256 |
